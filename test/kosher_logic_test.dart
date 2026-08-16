@@ -1,8 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:healthy_lifestyle_stage9/shared/data/food_catalog.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/app_state.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   test('dairy wait follows the user profile setting', () {
     final state = AppState()
       ..kosherEnabled = true
