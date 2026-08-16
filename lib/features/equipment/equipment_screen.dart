@@ -1,0 +1,3 @@
+import 'package:flutter/material.dart';
+import '../../shared/models/app_state.dart';
+class EquipmentScreen extends StatelessWidget{const EquipmentScreen({super.key});@override Widget build(BuildContext context){final s=AppStateScope.of(context);return Scaffold(appBar:AppBar(title:const Text('הציוד שלי')),body:AnimatedBuilder(animation:s,builder:(_,__)=>ListView(padding:const EdgeInsets.all(16),children:[const Text('סמן את המכשירים והציוד שבאמת זמינים לך. מערך התרגילים ייבנה רק מתוך הציוד שסימנת.'),const SizedBox(height:12),...s.equipment.entries.map((e)=>CheckboxListTile(value:e.value,title:Text(e.key),onChanged:(v)=>s.toggleEquipment(e.key,v??false))),const SizedBox(height:12),FilledButton(onPressed:()=>Navigator.pop(context),child:const Text('סיימתי'))])));}}
