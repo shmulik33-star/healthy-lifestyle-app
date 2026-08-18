@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../features/coach/coach_screen.dart';
@@ -14,20 +15,43 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   AppState? state;
+  Timer? _dayBoundaryTimer;
   int index = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     AppState.load().then((loaded) {
-      if (mounted) setState(() => state = loaded);
+      if (!mounted) return;
+      loaded.ensureCurrentDay();
+      setState(() => state = loaded);
+      _dayBoundaryTimer=Timer.periodic(
+        const Duration(minutes:1),
+        (_) => loaded.ensureCurrentDay(),
+      );
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if(lifecycleState==AppLifecycleState.resumed){
+      state?.ensureCurrentDay();
+    }
+  }
+
+  @override
+  void dispose() {
+    _dayBoundaryTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void _goTo(int destination) {
     if (destination < 0 || destination > 4) return;
+    state?.ensureCurrentDay();
     if (destination == index) return;
     setState(() => index = destination);
   }
