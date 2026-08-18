@@ -75,7 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height:12),
           DropdownButtonFormField<String>(
             initialValue:activity,
-            decoration:const InputDecoration(labelText:'רמת פעילות',border:OutlineInputBorder()),
+            decoration:const InputDecoration(labelText:'רמת פעילות גופנית',border:OutlineInputBorder()),
             items:['נמוכה','בינונית','גבוהה']
                 .map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
             onChanged:(v)=>setState(()=>activity=v),
