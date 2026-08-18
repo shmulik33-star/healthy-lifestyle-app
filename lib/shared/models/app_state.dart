@@ -57,8 +57,6 @@ class PlannedDay {
   factory PlannedDay.fromJson(Map<String,dynamic> j)=>PlannedDay(day:j['day']??'',meals:((j['meals'] as List?)??[]).map((e)=>PlannedMeal.fromJson(Map<String,dynamic>.from(e))).toList());
 }
 
-
-
 class PantryItem {
   PantryItem({
     required this.id,
@@ -145,6 +143,34 @@ class WorkoutExercise {
   final String muscleGroup;
 }
 
+class DailySnapshot {
+  const DailySnapshot({
+    required this.dayKey,
+    required this.waterCups,
+    required this.steps,
+    required this.workoutCompleted,
+  });
+
+  final String dayKey;
+  final int waterCups;
+  final int steps;
+  final bool workoutCompleted;
+
+  Map<String,dynamic> toJson()=>{
+    'dayKey':dayKey,
+    'waterCups':waterCups,
+    'steps':steps,
+    'workoutCompleted':workoutCompleted,
+  };
+
+  factory DailySnapshot.fromJson(Map<String,dynamic> j)=>DailySnapshot(
+    dayKey:j['dayKey']??'',
+    waterCups:j['waterCups']??0,
+    steps:j['steps']??0,
+    workoutCompleted:j['workoutCompleted']==true,
+  );
+}
+
 class AppState extends ChangeNotifier {
   AppState(){ if (weeklyPlan.isEmpty) generateWeeklyPlan(save:false); }
   String firstName = 'שמוליק';
@@ -156,11 +182,14 @@ class AppState extends ChangeNotifier {
   int proteinTarget = 120;
   int carbTarget = 150;
   int fatTarget = 70;
-  int waterCups = 6;
+  int waterCups = 0;
   int waterTarget = 9;
-  int steps = 5420;
+  int steps = 0;
   int stepsTarget = 7000;
   bool workoutCompleted = false;
+  int dayStartMinutes = 300;
+  String dailyStateKey = '';
+  final List<DailySnapshot> dailyHistory = [];
   bool kosherEnabled = true;
   bool meatDairySeparationEnabled = true;
   int meatWaitMinutes = 360;
@@ -190,11 +219,21 @@ class AppState extends ChangeNotifier {
     final raw = prefs.getString(_storageKey) ?? prefs.getString(_oldStorageKey);
     if (raw == null) {
       state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
+      state.dailyStateKey=state.dayKeyAt(DateTime.now());
       state.generateWeeklyPlan(save:false);
+      await state._save();
       return state;
     }
     try { state._readJson(jsonDecode(raw) as Map<String,dynamic>); } catch (_) {}
+    if (state.dailyStateKey.isEmpty) {
+      // Upgrade path: keep the user's existing current-day values the first
+      // time this version is opened, then reset from the next boundary.
+      state.dailyStateKey=state.dayKeyAt(DateTime.now());
+    } else {
+      state.ensureCurrentDay(now:DateTime.now(),notify:false,save:false);
+    }
     if (state.weeklyPlan.isEmpty) state.generateWeeklyPlan(save:false);
+    await state._save();
     return state;
   }
 
@@ -207,6 +246,7 @@ class AppState extends ChangeNotifier {
     'firstName':firstName,'age':age,'heightCm':heightCm,'currentWeight':currentWeight,'targetWeight':targetWeight,
     'calorieTarget':calorieTarget,'proteinTarget':proteinTarget,'carbTarget':carbTarget,'fatTarget':fatTarget,
     'waterCups':waterCups,'waterTarget':waterTarget,'steps':steps,'stepsTarget':stepsTarget,'workoutCompleted':workoutCompleted,
+    'dayStartMinutes':dayStartMinutes,'dailyStateKey':dailyStateKey,'dailyHistory':dailyHistory.map((e)=>e.toJson()).toList(),
     'kosherEnabled':kosherEnabled,'meatDairySeparationEnabled':meatDairySeparationEnabled,'meatWaitMinutes':meatWaitMinutes,
     'customFoods':customFoods.map((e)=>e.toJson()).toList(),
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
@@ -220,6 +260,9 @@ class AppState extends ChangeNotifier {
     firstName=j['firstName']??firstName; age=j['age']??age; heightCm=(j['heightCm']??heightCm).toDouble(); currentWeight=(j['currentWeight']??currentWeight).toDouble(); targetWeight=(j['targetWeight']??targetWeight).toDouble();
     calorieTarget=j['calorieTarget']??calorieTarget; proteinTarget=j['proteinTarget']??proteinTarget; carbTarget=j['carbTarget']??carbTarget; fatTarget=j['fatTarget']??fatTarget;
     waterCups=j['waterCups']??waterCups; waterTarget=j['waterTarget']??waterTarget; steps=j['steps']??steps; stepsTarget=j['stepsTarget']??stepsTarget; workoutCompleted=j['workoutCompleted']??workoutCompleted;
+    dayStartMinutes=((j['dayStartMinutes']??dayStartMinutes) as num).toInt().clamp(0,1439);
+    dailyStateKey=j['dailyStateKey']??dailyStateKey;
+    dailyHistory..clear()..addAll(((j['dailyHistory'] as List?)??[]).map((e)=>DailySnapshot.fromJson(Map<String,dynamic>.from(e))));
     kosherEnabled=j['kosherEnabled']??kosherEnabled;
     meatDairySeparationEnabled=j['meatDairySeparationEnabled']??meatDairySeparationEnabled;
     meatWaitMinutes=j['meatWaitMinutes']??meatWaitMinutes;
@@ -236,13 +279,90 @@ class AppState extends ChangeNotifier {
     pantryItems..clear()..addAll(((j['pantryItems'] as List?)??[]).map((e)=>PantryItem.fromJson(Map<String,dynamic>.from(e))));
   }
 
+  DateTime logicalDayDateAt(DateTime time) {
+    final shifted=time.subtract(Duration(minutes:dayStartMinutes));
+    return DateTime(shifted.year,shifted.month,shifted.day);
+  }
+
+  String dayKeyAt(DateTime time) {
+    final d=logicalDayDateAt(time);
+    String two(int v)=>v.toString().padLeft(2,'0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  DateTime dayStartAt(DateTime time) {
+    final d=logicalDayDateAt(time);
+    final hour=dayStartMinutes~/60;
+    final minute=dayStartMinutes.remainder(60);
+    return DateTime(d.year,d.month,d.day,hour,minute);
+  }
+
+  DateTime dayEndAt(DateTime time) {
+    final d=logicalDayDateAt(time);
+    final next=DateTime(d.year,d.month,d.day+1);
+    final hour=dayStartMinutes~/60;
+    final minute=dayStartMinutes.remainder(60);
+    return DateTime(next.year,next.month,next.day,hour,minute);
+  }
+
+  String get dayStartTimeLabel {
+    final h=(dayStartMinutes~/60).toString().padLeft(2,'0');
+    final m=dayStartMinutes.remainder(60).toString().padLeft(2,'0');
+    return '$h:$m';
+  }
+
+  bool ensureCurrentDay({DateTime? now,bool notify=true,bool save=true}) {
+    final current=now??DateTime.now();
+    final key=dayKeyAt(current);
+    if(dailyStateKey.isEmpty){
+      dailyStateKey=key;
+      if(save)_save();
+      return false;
+    }
+    if(dailyStateKey==key)return false;
+
+    dailyHistory.removeWhere((e)=>e.dayKey==dailyStateKey);
+    dailyHistory.add(DailySnapshot(
+      dayKey:dailyStateKey,
+      waterCups:waterCups,
+      steps:steps,
+      workoutCompleted:workoutCompleted,
+    ));
+    if(dailyHistory.length>120){
+      dailyHistory.removeRange(0,dailyHistory.length-120);
+    }
+    waterCups=0;
+    steps=0;
+    workoutCompleted=false;
+    dailyStateKey=key;
+    if(notify)notifyListeners();
+    if(save)_save();
+    return true;
+  }
+
+  void setDayStartMinutes(int minutes){
+    dayStartMinutes=minutes.clamp(0,1439);
+    // Changing the preference should not erase today's values. Re-anchor the
+    // current values to the newly chosen logical day and apply it from here on.
+    dailyStateKey=dayKeyAt(DateTime.now());
+    notifyListeners();
+    _save();
+  }
+
+  List<MealEntry> mealsForDayAt(DateTime now) {
+    final start=dayStartAt(now);
+    final end=dayEndAt(now);
+    return meals.where((m)=>!m.time.isBefore(start)&&m.time.isBefore(end)).toList()
+      ..sort((a,b)=>a.time.compareTo(b.time));
+  }
+
   int get caloriesEaten => todayMeals.fold(0,(s,m)=>s+m.calories);
   double get proteinEaten => todayMeals.fold(0,(s,m)=>s+m.protein);
   double get carbsEaten => todayMeals.fold(0,(s,m)=>s+m.carbs);
   double get fatEaten => todayMeals.fold(0,(s,m)=>s+m.fat);
   int get remainingCalories => (calorieTarget-caloriesEaten).clamp(0, calorieTarget);
   double get remainingProtein => (proteinTarget-proteinEaten).clamp(0, proteinTarget.toDouble());
-  List<MealEntry> get todayMeals { final n=DateTime.now(); return meals.where((m)=>m.time.year==n.year&&m.time.month==n.month&&m.time.day==n.day).toList()..sort((a,b)=>a.time.compareTo(b.time)); }
+  List<MealEntry> get todayMeals => mealsForDayAt(DateTime.now());
 
   List<FoodItem> get allFoods => [...foodCatalog, ...customFoods];
 
@@ -275,6 +395,7 @@ class AppState extends ChangeNotifier {
   FoodItem foodById(String id)=>allFoods.firstWhere((f)=>f.id==id);
 
   void addFood(FoodItem food,double quantity,String unit) {
+    ensureCurrentDay();
     final g=food.gramsFor(unit,quantity);
     final entry=MealEntry(
       foodId:food.id,name:food.name,quantity:quantity,unit:unit,grams:g,
@@ -320,14 +441,14 @@ class AppState extends ChangeNotifier {
     return na==nb || na.contains(nb) || nb.contains(na);
   }
   void removeMeal(MealEntry meal){meals.remove(meal);notifyListeners();_save();}
-  void addWater(){if(waterCups<20)waterCups++;notifyListeners();_save();}
-  void completeWorkout(){workoutCompleted=true;notifyListeners();_save();}
+  void addWater(){ensureCurrentDay();if(waterCups<20)waterCups++;notifyListeners();_save();}
+  void completeWorkout(){ensureCurrentDay();workoutCompleted=true;notifyListeners();_save();}
   void toggleEquipment(String name,bool value){equipment[name]=value;notifyListeners();_save();}
   void updateProfile({
     required String name,required double weight,required double target,
     required int calories,required int protein,String? goal,String? activity,
     int? workoutDays,String? style,bool? keepKosher,bool? separateMeatDairy,
-    int? waitMinutes,
+    int? waitMinutes,int? dailyStartMinutes,
   }){
     firstName=name; currentWeight=weight; targetWeight=target;
     calorieTarget=calories; proteinTarget=protein;
@@ -338,6 +459,10 @@ class AppState extends ChangeNotifier {
     if(keepKosher!=null) kosherEnabled=keepKosher;
     if(separateMeatDairy!=null) meatDairySeparationEnabled=separateMeatDairy;
     if(waitMinutes!=null) meatWaitMinutes=waitMinutes;
+    if(dailyStartMinutes!=null){
+      dayStartMinutes=dailyStartMinutes.clamp(0,1439);
+      dailyStateKey=dayKeyAt(DateTime.now());
+    }
     notifyListeners(); generateWeeklyPlan();
   }
 
@@ -416,7 +541,6 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleShopping(String item,bool value){shoppingChecked[item]=value;notifyListeners();_save();}
-
 
   String _shoppingCategory(String name) {
     if(name.contains('ביצה')) return 'ביצים';
@@ -500,7 +624,6 @@ class AppState extends ChangeNotifier {
   }
   void deleteShoppingItem(ShoppingItem item){shoppingItems.remove(item);notifyListeners();_save();}
   void toggleSmartShopping(ShoppingItem item,bool value){item.checked=value;notifyListeners();_save();}
-
 
   PantryItem? pantryByName(String name) {
     for (final p in pantryItems) {
