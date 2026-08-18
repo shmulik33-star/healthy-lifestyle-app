@@ -30,6 +30,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   ];
 
   final name=TextEditingController();
+  final categoryDetail=TextEditingController();
   final calories=TextEditingController();
   final protein=TextEditingController();
   final carbs=TextEditingController();
@@ -44,7 +45,11 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
 
   @override
   void dispose(){
-    for(final c in [name,calories,protein,carbs,fat,unitName,unitGrams,labelText]){c.dispose();}
+    for(final c in [
+      name,categoryDetail,calories,protein,carbs,fat,unitName,unitGrams,labelText,
+    ]){
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -128,6 +133,17 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
             items:categories.map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
             onChanged:(v)=>setState(()=>category=v??'אחר'),
           ),
+          if(category=='אחר')...[
+            const SizedBox(height:10),
+            TextField(
+              controller:categoryDetail,
+              decoration:const InputDecoration(
+                labelText:'פרט קטגוריה',
+                hintText:'לדוגמה: מאכלי שבת, אוכל מוכן, תוספות',
+                border:OutlineInputBorder(),
+              ),
+            ),
+          ],
           if(showKosherFields)...[
             const SizedBox(height:10),
             DropdownButtonFormField<KosherStatus>(
@@ -193,12 +209,20 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('יש להזין שם מזון.')));
       return;
     }
+    final detail=categoryDetail.text.trim();
+    if(category=='אחר' && detail.isEmpty){
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content:Text('בחרת „אחר”. יש לפרט את הקטגוריה.')),
+      );
+      return;
+    }
     final grams=double.tryParse(unitGrams.text.replaceAll(',','.'))??100;
     final id='custom_${DateTime.now().microsecondsSinceEpoch}';
     final food=FoodItem(
       id:id,
       name:n,
       category:category,
+      categoryDetail:category=='אחר'?detail:'',
       type:kosherType,
       kosherStatus:kosherStatus,
       caloriesPer100g:double.tryParse(calories.text.replaceAll(',','.'))??0,
