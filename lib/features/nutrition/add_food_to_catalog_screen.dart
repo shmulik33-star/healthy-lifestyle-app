@@ -11,8 +11,25 @@ class AddFoodToCatalogScreen extends StatefulWidget {
 }
 
 class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
+  static const categories=[
+    'בשר ועוף',
+    'דגים',
+    'ביצים',
+    'מוצרי חלב',
+    'לחמים ודגנים',
+    'קטניות',
+    'ירקות',
+    'פירות',
+    'אגוזים וזרעים',
+    'ממרחים ורטבים',
+    'חטיפים וממתקים',
+    'משקאות',
+    'מאפים ומזון מוכן',
+    'מזון קפוא',
+    'אחר',
+  ];
+
   final name=TextEditingController();
-  final category=TextEditingController(text:'אחר');
   final calories=TextEditingController();
   final protein=TextEditingController();
   final carbs=TextEditingController();
@@ -21,12 +38,13 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   final unitGrams=TextEditingController(text:'100');
   final labelText=TextEditingController();
 
+  String category='אחר';
   KosherStatus kosherStatus=KosherStatus.unknown;
   KosherFoodType kosherType=KosherFoodType.pareve;
 
   @override
   void dispose(){
-    for(final c in [name,category,calories,protein,carbs,fat,unitName,unitGrams,labelText]){c.dispose();}
+    for(final c in [name,calories,protein,carbs,fat,unitName,unitGrams,labelText]){c.dispose();}
     super.dispose();
   }
 
@@ -56,6 +74,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
 
   @override
   Widget build(BuildContext context){
+    final showKosherFields=widget.state.kosherEnabled;
     return Scaffold(
       appBar:AppBar(title:const Text('הוסף מזון למאגר')),
       body:ListView(
@@ -92,27 +111,42 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
               ),
             ),
           ),
-          const SizedBox(height:12),
-          TextField(controller:name,decoration:const InputDecoration(labelText:'שם המזון',border:OutlineInputBorder())),
-          const SizedBox(height:10),
-          TextField(controller:category,decoration:const InputDecoration(labelText:'קטגוריה',border:OutlineInputBorder())),
-          const SizedBox(height:10),
-          DropdownButtonFormField<KosherStatus>(
-            initialValue:kosherStatus,
-            decoration:const InputDecoration(labelText:'מצב כשרות',border:OutlineInputBorder()),
-            items:KosherStatus.values.map((v)=>DropdownMenuItem(value:v,child:Text(kosherStatusLabel(v)))).toList(),
-            onChanged:(v)=>setState(()=>kosherStatus=v??KosherStatus.unknown),
+          const SizedBox(height:16),
+          const Text('פרטי המזון',style:TextStyle(fontWeight:FontWeight.w800)),
+          const SizedBox(height:8),
+          TextField(
+            controller:name,
+            decoration:const InputDecoration(labelText:'שם המזון',border:OutlineInputBorder()),
           ),
-          if(kosherStatus==KosherStatus.kosher)...[
-            const SizedBox(height:10),
-            DropdownButtonFormField<KosherFoodType>(
-              initialValue:kosherType,
-              decoration:const InputDecoration(labelText:'סיווג כשרותי',border:OutlineInputBorder()),
-              items:KosherFoodType.values.map((v)=>DropdownMenuItem(value:v,child:Text(kosherLabel(v)))).toList(),
-              onChanged:(v)=>setState(()=>kosherType=v??KosherFoodType.pareve),
+          const SizedBox(height:10),
+          DropdownButtonFormField<String>(
+            initialValue:category,
+            decoration:const InputDecoration(
+              labelText:'קטגוריה',
+              border:OutlineInputBorder(),
             ),
+            items:categories.map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
+            onChanged:(v)=>setState(()=>category=v??'אחר'),
+          ),
+          if(showKosherFields)...[
+            const SizedBox(height:10),
+            DropdownButtonFormField<KosherStatus>(
+              initialValue:kosherStatus,
+              decoration:const InputDecoration(labelText:'מצב כשרות',border:OutlineInputBorder()),
+              items:KosherStatus.values.map((v)=>DropdownMenuItem(value:v,child:Text(kosherStatusLabel(v)))).toList(),
+              onChanged:(v)=>setState(()=>kosherStatus=v??KosherStatus.unknown),
+            ),
+            if(kosherStatus==KosherStatus.kosher)...[
+              const SizedBox(height:10),
+              DropdownButtonFormField<KosherFoodType>(
+                initialValue:kosherType,
+                decoration:const InputDecoration(labelText:'סיווג כשרותי',border:OutlineInputBorder()),
+                items:KosherFoodType.values.map((v)=>DropdownMenuItem(value:v,child:Text(kosherLabel(v)))).toList(),
+                onChanged:(v)=>setState(()=>kosherType=v??KosherFoodType.pareve),
+              ),
+            ],
           ],
-          const SizedBox(height:14),
+          const SizedBox(height:16),
           const Text('ערכים ל־100 גרם',style:TextStyle(fontWeight:FontWeight.w800)),
           const SizedBox(height:8),
           Row(children:[
@@ -164,7 +198,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
     final food=FoodItem(
       id:id,
       name:n,
-      category:category.text.trim().isEmpty?'אחר':category.text.trim(),
+      category:category,
       type:kosherType,
       kosherStatus:kosherStatus,
       caloriesPer100g:double.tryParse(calories.text.replaceAll(',','.'))??0,
