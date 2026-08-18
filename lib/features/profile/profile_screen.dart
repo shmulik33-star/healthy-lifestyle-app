@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../shared/models/app_state.dart';
+import 'profile_goals_store.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -9,7 +10,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   TextEditingController? name,weight,target,calories,protein,customWait;
-  String? goal,activity,style;
+  List<String> goals=[];
+  String? activity,style;
   int? workoutDays;
   bool keepKosher=true;
   bool separateMeatDairy=true;
@@ -28,11 +30,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     calories=TextEditingController(text:'${s.calorieTarget}');
     protein=TextEditingController(text:'${s.proteinTarget}');
     customWait=TextEditingController(text:'${s.meatWaitMinutes}');
-    goal=s.primaryGoal; activity=s.activityLevel; style=s.eatingStyle;
+    goals=[s.primaryGoal];
+    activity=s.activityLevel; style=s.eatingStyle;
     workoutDays=s.workoutDaysPerWeek;
     keepKosher=s.kosherEnabled;
     separateMeatDairy=s.meatDairySeparationEnabled;
     waitMinutes=s.meatWaitMinutes;
+    _loadGoals(s.primaryGoal);
+  }
+
+  Future<void> _loadGoals(String fallbackGoal) async {
+    final saved=await ProfileGoalsStore.load(fallbackGoal:fallbackGoal);
+    if(!mounted)return;
+    setState(()=>goals=saved);
   }
 
   @override
@@ -65,12 +75,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width:10),
             Expanded(child:_f(target!,'יעד משקל (ק״ג)',number:true)),
           ]),
-          DropdownButtonFormField<String>(
-            initialValue:goal,
-            decoration:const InputDecoration(labelText:'המטרה העיקרית',border:OutlineInputBorder()),
-            items:['ירידה במשקל','שמירה על המשקל','עלייה במסת שריר','שיפור הכושר']
-                .map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
-            onChanged:(v)=>setState(()=>goal=v),
+          Text('המטרות שלי',style:Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height:4),
+          const Text('אפשר לבחור יותר ממטרה אחת. ירידה במשקל ושמירה על המשקל אינן נבחרות יחד.'),
+          const SizedBox(height:8),
+          Wrap(
+            spacing:8,
+            runSpacing:8,
+            children:ProfileGoalsStore.options.map((goal)=>FilterChip(
+              label:Text(goal),
+              selected:goals.contains(goal),
+              onSelected:(_)=>setState(()=>goals=ProfileGoalsStore.toggleGoal(goals,goal)),
+            )).toList(),
           ),
           const SizedBox(height:12),
           DropdownButtonFormField<String>(
@@ -103,10 +119,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
           OutlinedButton.icon(
             onPressed:(){
-              s.primaryGoal=goal??s.primaryGoal;
-              s.activityLevel=activity??s.activityLevel;
-              calories!.text='${s.suggestedCalories()}';
-              protein!.text='${s.suggestedProtein()}';
+              final profileWeight=double.tryParse(weight!.text.replaceAll(',','.'))??s.currentWeight;
+              calories!.text='${ProfileGoalsStore.suggestedCalories(
+                weightKg:profileWeight,
+                activityLevel:activity??s.activityLevel,
+                goals:goals,
+              )}';
+              protein!.text='${ProfileGoalsStore.suggestedProtein(
+                weightKg:profileWeight,
+                goals:goals,
+              )}';
               setState((){});
             },
             icon:const Icon(Icons.auto_awesome),
@@ -158,17 +180,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
           const SizedBox(height:16),
           FilledButton(
-            onPressed:(){
+            onPressed:() async {
               final finalWait=waitMinutes==-1
                   ? (int.tryParse(customWait!.text)??360)
                   : waitMinutes;
+              await ProfileGoalsStore.save(goals);
+              if(!mounted)return;
               s.updateProfile(
                 name:name!.text.trim().isEmpty?s.firstName:name!.text.trim(),
                 weight:double.tryParse(weight!.text.replaceAll(',','.'))??s.currentWeight,
                 target:double.tryParse(target!.text.replaceAll(',','.'))??s.targetWeight,
                 calories:int.tryParse(calories!.text)??s.calorieTarget,
                 protein:int.tryParse(protein!.text)??s.proteinTarget,
-                goal:goal,activity:activity,workoutDays:workoutDays,style:style,
+                goal:goals.first,activity:activity,workoutDays:workoutDays,style:style,
                 keepKosher:keepKosher,
                 separateMeatDairy:keepKosher&&separateMeatDairy,
                 waitMinutes:finalWait,
