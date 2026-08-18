@@ -25,6 +25,7 @@ class FoodItem {
     required this.carbsPer100g,
     required this.fatPer100g,
     required this.units,
+    this.categoryDetail = '',
     this.kosherStatus = KosherStatus.kosher,
     this.userCreated = false,
   });
@@ -32,6 +33,7 @@ class FoodItem {
   final String id;
   final String name;
   final String category;
+  final String categoryDetail;
   final KosherFoodType type;
   final KosherStatus kosherStatus;
   final double caloriesPer100g;
@@ -40,6 +42,11 @@ class FoodItem {
   final double fatPer100g;
   final Map<String, double> units;
   final bool userCreated;
+
+  String get displayCategory =>
+      category == 'אחר' && categoryDetail.trim().isNotEmpty
+          ? 'אחר · ${categoryDetail.trim()}'
+          : category;
 
   double gramsFor(String unit, double quantity) => (units[unit] ?? 1) * quantity;
   int caloriesFor(String unit, double quantity) =>
@@ -52,8 +59,8 @@ class FoodItem {
       gramsFor(unit, quantity) * fatPer100g / 100;
 
   Map<String,dynamic> toJson()=> {
-    'id':id,'name':name,'category':category,'type':type.name,
-    'kosherStatus':kosherStatus.name,
+    'id':id,'name':name,'category':category,'categoryDetail':categoryDetail,
+    'type':type.name,'kosherStatus':kosherStatus.name,
     'caloriesPer100g':caloriesPer100g,'proteinPer100g':proteinPer100g,
     'carbsPer100g':carbsPer100g,'fatPer100g':fatPer100g,
     'units':units,'userCreated':userCreated,
@@ -63,6 +70,7 @@ class FoodItem {
     id:j['id']??'custom_${DateTime.now().microsecondsSinceEpoch}',
     name:j['name']??'מזון חדש',
     category:j['category']??'אחר',
+    categoryDetail:j['categoryDetail']??'',
     type:KosherFoodType.values.firstWhere(
       (e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve),
     kosherStatus:KosherStatus.values.firstWhere(
