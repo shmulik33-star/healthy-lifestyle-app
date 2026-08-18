@@ -38,7 +38,7 @@ void main() {
     expect(state.waterCups,0);
     expect(state.steps,0);
     expect(state.workoutCompleted,isFalse);
-    expect(state.dailyHistory,last);
+    expect(state.dailyHistory,isNotEmpty);
     expect(state.dailyHistory.last.dayKey,'2026-08-17');
     expect(state.dailyHistory.last.waterCups,8);
     expect(state.dailyHistory.last.steps,6421);
