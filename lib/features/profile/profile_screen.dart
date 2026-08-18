@@ -16,6 +16,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool keepKosher=true;
   bool separateMeatDairy=true;
   int waitMinutes=360;
+  TimeOfDay dayStart=const TimeOfDay(hour:5,minute:0);
   bool initialized=false;
 
   @override
@@ -36,6 +37,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     keepKosher=s.kosherEnabled;
     separateMeatDairy=s.meatDairySeparationEnabled;
     waitMinutes=s.meatWaitMinutes;
+    dayStart=TimeOfDay(
+      hour:s.dayStartMinutes~/60,
+      minute:s.dayStartMinutes.remainder(60),
+    );
     _loadGoals(s.primaryGoal);
   }
 
@@ -43,6 +48,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final saved=await ProfileGoalsStore.load(fallbackGoal:fallbackGoal);
     if(!mounted)return;
     setState(()=>goals=saved);
+  }
+
+  Future<void> _pickDayStart() async {
+    final picked=await showTimePicker(
+      context:context,
+      initialTime:dayStart,
+      helpText:'בחר שעת תחילת היום',
+      cancelText:'ביטול',
+      confirmText:'אישור',
+    );
+    if(picked!=null && mounted)setState(()=>dayStart=picked);
+  }
+
+  String get _dayStartLabel {
+    final h=dayStart.hour.toString().padLeft(2,'0');
+    final m=dayStart.minute.toString().padLeft(2,'0');
+    return '$h:$m';
   }
 
   @override
@@ -135,6 +157,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label:const Text('חשב לי הצעה לפי הפרופיל'),
           ),
           const SizedBox(height:18),
+          Text('הגדרות היום',style:Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height:6),
+          Card(
+            child:ListTile(
+              leading:const Icon(Icons.schedule),
+              title:const Text('שעת תחילת היום שלי'),
+              subtitle:const Text('מים, צעדים, ארוחות והאימון היומי יתחילו יום חדש בשעה הזאת. ברירת המחדל היא 05:00.'),
+              trailing:Text(_dayStartLabel,style:const TextStyle(fontWeight:FontWeight.w800)),
+              onTap:_pickDayStart,
+            ),
+          ),
+          const SizedBox(height:18),
           Text('כשרות',style:Theme.of(context).textTheme.titleMedium),
           const SizedBox(height:6),
           SwitchListTile(
@@ -196,8 +230,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 keepKosher:keepKosher,
                 separateMeatDairy:keepKosher&&separateMeatDairy,
                 waitMinutes:finalWait,
+                dailyStartMinutes:dayStart.hour*60+dayStart.minute,
               );
-              Navigator.pop(context);
+              if(mounted)Navigator.pop(context);
             },
             child:const Text('שמור שינויים'),
           ),
