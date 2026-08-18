@@ -41,13 +41,13 @@ jobs:
       - name: Build web
         run: flutter build web --release
 
-      - name: Deploy Cloudflare Pages preview
+      - name: Deploy Cloudflare Pages fixed preview
         if: github.event_name == 'pull_request'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy build/web --project-name=healthy-lifestyle-app --branch=${{ github.head_ref }}
+          command: pages deploy build/web --project-name=healthy-lifestyle-app --branch=test
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set main as Cloudflare production branch
