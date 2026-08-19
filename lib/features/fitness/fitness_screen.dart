@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
+import '../equipment/equipment_item.dart';
 import '../equipment/equipment_screen.dart';
+import '../equipment/equipment_workout.dart';
 
 class FitnessScreen extends StatefulWidget {
   const FitnessScreen({super.key});
@@ -13,6 +15,19 @@ class FitnessScreen extends StatefulWidget {
 
 class _FitnessScreenState extends State<FitnessScreen> {
   final Set<int> _completedExercises = <int>{};
+  List<CustomEquipmentItem> _customEquipment = <CustomEquipmentItem>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomEquipment();
+  }
+
+  Future<void> _loadCustomEquipment() async {
+    final items = await EquipmentStore.load();
+    if (!mounted) return;
+    setState(() => _customEquipment = items);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,16 +35,22 @@ class _FitnessScreenState extends State<FitnessScreen> {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
-        final workout = state.todayWorkout;
-        final availableEquipment = state.equipment.entries
-            .where((entry) => entry.value)
-            .map((entry) => entry.key)
-            .toList();
+        final workout = EquipmentWorkoutBuilder.combine(
+          state.todayWorkout,
+          _customEquipment,
+        );
+        final availableEquipment = <String>[
+          ...state.equipment.entries
+              .where((entry) => entry.value)
+              .map((entry) => entry.key),
+          ..._customEquipment.where((item) => item.available).map((item) => item.name),
+        ];
         final completedCount = state.workoutCompleted
             ? workout.length
             : _completedExercises.where((index) => index < workout.length).length;
         final progress = workout.isEmpty ? 0.0 : completedCount / workout.length;
-        final estimatedMinutes = workout.fold<int>(0, (sum, exercise) => sum + exercise.sets * 3);
+        final estimatedMinutes =
+            workout.fold<int>(0, (sum, exercise) => sum + exercise.sets * 3);
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -42,20 +63,22 @@ class _FitnessScreenState extends State<FitnessScreen> {
                     children: [
                       Text('כושר', style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 3),
-                      const Text('האימון נבנה לפי הציוד שסימנת כזמין.'),
+                      const Text('האימון נבנה לפי הציוד שסימנת והציוד שהוספת.'),
                     ],
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => AppStateScope(
-                        state: state,
-                        child: const EquipmentScreen(),
+                  onPressed: () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AppStateScope(
+                          state: state,
+                          child: const EquipmentScreen(),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                    await _loadCustomEquipment();
+                  },
                   icon: const Icon(Icons.tune),
                   label: const Text('הציוד שלי'),
                 ),
@@ -80,7 +103,10 @@ class _FitnessScreenState extends State<FitnessScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('האימון של היום', style: Theme.of(context).textTheme.titleMedium),
+                              Text(
+                                'האימון של היום',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
                               Text('גב + יד קדמית · כ־$estimatedMinutes דקות'),
                             ],
                           ),
@@ -95,7 +121,16 @@ class _FitnessScreenState extends State<FitnessScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     const SizedBox(height: 12),
-                    Text('ציוד זמין: ${availableEquipment.isEmpty ? 'ללא ציוד' : availableEquipment.take(6).join(' · ')}'),
+                    Text(
+                      'ציוד זמין: ${availableEquipment.isEmpty ? 'ללא ציוד' : availableEquipment.take(6).join(' · ')}',
+                    ),
+                    if (_customEquipment.any((item) => item.available)) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'כולל ${_customEquipment.where((item) => item.available).length} פריטי ציוד שהוספת בעצמך.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -105,7 +140,9 @@ class _FitnessScreenState extends State<FitnessScreen> {
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(18),
-                  child: Text('לא נמצא כרגע אימון מתאים לציוד שסומן. היכנס ל״הציוד שלי״ ועדכן מה עומד לרשותך.'),
+                  child: Text(
+                    'לא נמצא כרגע אימון מתאים לציוד שסומן. היכנס ל״הציוד שלי״ ועדכן מה עומד לרשותך.',
+                  ),
                 ),
               )
             else
@@ -139,20 +176,33 @@ class _FitnessScreenState extends State<FitnessScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(exercise.name, style: Theme.of(context).textTheme.titleMedium),
+                                Text(
+                                  exercise.name,
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
                                 const SizedBox(height: 4),
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 6,
                                   children: [
-                                    _InfoChip(icon: Icons.repeat, text: '${exercise.sets} סטים × ${exercise.reps} חזרות'),
-                                    _InfoChip(icon: Icons.accessibility_new, text: exercise.muscleGroup),
-                                    _InfoChip(icon: Icons.precision_manufacturing_outlined, text: exercise.equipment),
+                                    _InfoChip(
+                                      icon: Icons.repeat,
+                                      text: '${exercise.sets} סטים × ${exercise.reps} חזרות',
+                                    ),
+                                    _InfoChip(
+                                      icon: Icons.accessibility_new,
+                                      text: exercise.muscleGroup,
+                                    ),
+                                    _InfoChip(
+                                      icon: Icons.precision_manufacturing_outlined,
+                                      text: exercise.equipment,
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
                                 TextButton.icon(
-                                  onPressed: () => _showAlternative(context, state, exercise),
+                                  onPressed: () =>
+                                      _showAlternative(context, state, exercise),
                                   icon: const Icon(Icons.swap_horiz),
                                   label: const Text('המכשיר תפוס / החלף תרגיל'),
                                 ),
@@ -173,19 +223,25 @@ class _FitnessScreenState extends State<FitnessScreen> {
                       state.completeWorkout();
                       setState(() => _completedExercises
                         ..clear()
-                        ..addAll(List<int>.generate(workout.length, (index) => index)));
+                        ..addAll(
+                          List<int>.generate(workout.length, (index) => index),
+                        ));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('האימון נשמר כהושלם. כל הכבוד!')),
                       );
                     },
               icon: const Icon(Icons.check_circle_outline),
-              label: Text(state.workoutCompleted ? 'האימון הושלם ✓' : 'סיים ושמור את האימון'),
+              label: Text(
+                state.workoutCompleted ? 'האימון הושלם ✓' : 'סיים ושמור את האימון',
+              ),
             ),
             const SizedBox(height: 10),
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(14),
-                child: Text('בשלבים הבאים נוכל להוסיף משקל וחזרות לכל סט, טיימר מנוחה, היסטוריית ביצועים ותוכנית לפי ימים וחלקי גוף — בלי לשנות את המבנה שכבר בנינו.'),
+                child: Text(
+                  'ציוד שהוספת יכול להשתלב אוטומטית כאשר ניתן לזהות בבטחה תרגיל מתאים. ציוד כללי יותר נשמר כזמין, ובהמשך נוסיף מיפוי חכם וזיהוי בצילום.',
+                ),
               ),
             ),
           ],
@@ -194,13 +250,30 @@ class _FitnessScreenState extends State<FitnessScreen> {
     );
   }
 
-  void _showAlternative(BuildContext context, AppState state, WorkoutExercise exercise) {
-    final alt = state.alternativeFor(exercise);
+  void _showAlternative(
+    BuildContext context,
+    AppState state,
+    WorkoutExercise exercise,
+  ) {
+    WorkoutExercise? alt;
+    for (final item in _customEquipment.where((item) => item.available)) {
+      final candidate = EquipmentWorkoutBuilder.exerciseFor(item);
+      if (candidate != null &&
+          candidate.muscleGroup == exercise.muscleGroup &&
+          candidate.equipment != exercise.equipment) {
+        alt = candidate;
+        break;
+      }
+    }
+    alt ??= state.alternativeFor(exercise);
+
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('חלופה לתרגיל'),
-        content: Text('במקום ${exercise.name}, אפשר לבצע ${alt.name}: ${alt.sets} סטים × ${alt.reps} חזרות. ציוד: ${alt.equipment}.'),
+        content: Text(
+          'במקום ${exercise.name}, אפשר לבצע ${alt!.name}: ${alt.sets} סטים × ${alt.reps} חזרות. ציוד: ${alt.equipment}.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
