@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/models/app_state.dart';
 import 'equipment_item.dart';
+import 'equipment_photo_flow.dart';
 import 'equipment_workout.dart';
 
 class EquipmentScreen extends StatefulWidget {
@@ -58,7 +59,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _showPhotoBeta,
+                    onPressed: _addFromPhoto,
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('הוסף בצילום'),
                   ),
@@ -158,7 +159,25 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(item.name, style: Theme.of(context).textTheme.titleMedium),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          if (item.source == 'photo')
+                            const Padding(
+                              padding: EdgeInsetsDirectional.only(start: 6),
+                              child: Chip(
+                                avatar: Icon(Icons.photo_camera_outlined, size: 16),
+                                label: Text('צילום'),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 3),
                       Text('${item.displayCategory} · כמות ${item.quantity}'),
                       if (item.notes.trim().isNotEmpty) ...[
@@ -198,6 +217,17 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     if (index < 0) return;
     setState(() => _custom[index] = item.copyWith(available: value));
     await _saveCustom();
+  }
+
+  Future<void> _addFromPhoto() async {
+    final item = await EquipmentPhotoFlow.open(context);
+    if (item == null || !mounted) return;
+    setState(() => _custom.add(item));
+    await _saveCustom();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('״${item.name}״ נוסף מהצילום לציוד שלך.')),
+    );
   }
 
   Future<void> _openEditor({CustomEquipmentItem? existing}) async {
@@ -244,10 +274,12 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                     border: OutlineInputBorder(),
                   ),
                   items: EquipmentStore.categories
-                      .map((value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value),
-                          ))
+                      .map(
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text(value),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) {
                     if (value != null) setSheetState(() => category = value);
@@ -285,7 +317,10 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                 ),
                 if (error.isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  Text(
+                    error,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
                 ],
                 const SizedBox(height: 14),
                 FilledButton(
@@ -297,7 +332,9 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                       return;
                     }
                     if (category == 'אחר' && cleanDetail.isEmpty) {
-                      setSheetState(() => error = 'בחרת ״אחר״ — יש לפרט את סוג הציוד.');
+                      setSheetState(
+                        () => error = 'בחרת ״אחר״ — יש לפרט את סוג הציוד.',
+                      );
                       return;
                     }
                     final count = (int.tryParse(quantity.text) ?? 1).clamp(1, 99);
@@ -363,46 +400,5 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     if (confirmed != true || !mounted) return;
     setState(() => _custom.removeWhere((e) => e.id == item.id));
     await _saveCustom();
-  }
-
-  Future<void> _showPhotoBeta() async {
-    final continueManually = await showModalBottomSheet<bool>(
-      context: context,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircleAvatar(
-              radius: 28,
-              child: Icon(Icons.photo_camera_outlined, size: 28),
-            ),
-            const SizedBox(height: 12),
-            Text('הוספה בצילום · Beta', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            const Text(
-              'מסלול הצילום כבר נמצא באפליקציה. בשלב הבא נחבר זיהוי תמונה שיציע את שם המכשיר והקטגוריה, ורק לאחר אישור שלך הציוד יישמר.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'כרגע אפשר להמשיך מכאן לטופס ההוספה הידני ולא לאבד את האפשרות להוסיף ציוד שאינו ברשימה.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(sheetContext, true),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('המשך להוספה ידנית'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(sheetContext, false),
-              child: const Text('סגור'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (continueManually == true && mounted) await _openEditor();
   }
 }
