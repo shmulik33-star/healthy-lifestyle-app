@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>האפליקציה משתמשת במצלמה כדי לצלם ציוד כושר ולהוסיף אותו לרשימה שלך.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>האפליקציה מאפשרת לבחור תמונת ציוד כושר מהגלריה לצורך הוספה לרשימה שלך.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
