@@ -66,7 +66,10 @@ class CustomEquipmentItem {
         name: json['name']?.toString() ?? '',
         category: json['category']?.toString() ?? 'אחר',
         categoryDetail: json['categoryDetail']?.toString() ?? '',
-        quantity: ((json['quantity'] as num?) ?? 1).toInt().clamp(1, 99),
+        quantity: ((json['quantity'] as num?) ?? 1)
+            .toInt()
+            .clamp(1, 99)
+            .toInt(),
         notes: json['notes']?.toString() ?? '',
         available: json['available'] != false,
         source: json['source']?.toString() ?? 'manual',
