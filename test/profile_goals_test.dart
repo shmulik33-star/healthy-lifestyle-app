@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:healthy_lifestyle_stage9/features/profile/profile_goals_store.dart';
@@ -19,6 +21,28 @@ void main() {
     await ProfileGoalsStore.save(selected);
     final loaded=await ProfileGoalsStore.load(fallbackGoal:'שמירה על המשקל');
     expect(loaded,selected);
+  });
+
+  test('goals recover from backup when primary data is corrupt', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      ProfileGoalsStore.storageKey: '{broken-json',
+      ProfileGoalsStore.backupStorageKey:
+          jsonEncode(['עלייה במסת שריר', 'שיפור הכושר']),
+    });
+
+    final loaded=await ProfileGoalsStore.load(fallbackGoal:'ירידה במשקל');
+    expect(loaded,['עלייה במסת שריר','שיפור הכושר']);
+  });
+
+  test('saving changed goals keeps the previous valid payload as backup', () async {
+    await ProfileGoalsStore.save(['ירידה במשקל']);
+    await ProfileGoalsStore.save(['שיפור הכושר']);
+
+    final prefs=await SharedPreferences.getInstance();
+    expect(
+      prefs.getString(ProfileGoalsStore.backupStorageKey),
+      jsonEncode(['ירידה במשקל']),
+    );
   });
 
   test('weight loss and maintenance cannot be selected together', () {
