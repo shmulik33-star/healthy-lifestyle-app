@@ -129,7 +129,7 @@ void main() {
     expect(state.pantryItems.single.foodId, food.id);
   });
 
-  test('pantry name and category follow an edited custom food id', () {
+  test('pantry and shopping follow an edited custom food id', () {
     final state = AppState();
     const original = FoodItem(
       id: 'custom_rename_sync',
@@ -164,12 +164,18 @@ void main() {
       original.category,
       foodId: original.id,
     );
+    state.addFood(original, 1, 'מנה');
     state.addCustomFood(edited);
 
     final pantry = state.pantryItems.single;
     expect(pantry.foodId, edited.id);
     expect(pantry.name, edited.name);
     expect(pantry.category, edited.category);
+    expect(pantry.quantity, 1);
+
+    final consumption = state.last7DayConsumption;
+    expect(consumption[edited.name], 1);
+    expect(consumption.containsKey(original.name), isFalse);
   });
 
   test('egg aliases do not merge or consume egg salad as plain eggs', () {
