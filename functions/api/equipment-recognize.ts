@@ -74,10 +74,19 @@ function extractModelText(result: any): string {
   if (typeof result === 'string') return result.trim();
   if (!result || typeof result !== 'object') return '';
 
+  // Cloudflare's current ImageTextToText schema may return the generated text
+  // as `description` rather than the Text Generation `response` field.
+  if (typeof result.description === 'string') return result.description.trim();
+  if (typeof result.output_text === 'string') return result.output_text.trim();
+  if (typeof result.text === 'string') return result.text.trim();
+
   if (typeof result.response === 'string') return result.response.trim();
   if (result.response && typeof result.response === 'object') {
     const nested = textFromContent(result.response.content) ||
-      (typeof result.response.text === 'string' ? result.response.text.trim() : '');
+      (typeof result.response.text === 'string' ? result.response.text.trim() : '') ||
+      (typeof result.response.description === 'string'
+        ? result.response.description.trim()
+        : '');
     if (nested) return nested;
   }
 
@@ -88,8 +97,44 @@ function extractModelText(result: any): string {
     if (typeof choice?.text === 'string') return choice.text.trim();
   }
 
+  if (result.result && typeof result.result === 'object') {
+    const nestedResult = result.result;
+    if (typeof nestedResult.description === 'string') {
+      return nestedResult.description.trim();
+    }
+    if (typeof nestedResult.response === 'string') {
+      return nestedResult.response.trim();
+    }
+    if (typeof nestedResult.text === 'string') return nestedResult.text.trim();
+    const nestedContent = textFromContent(nestedResult.content);
+    if (nestedContent) return nestedContent;
+  }
+
+  if (result.data && typeof result.data === 'object') {
+    if (typeof result.data.description === 'string') {
+      return result.data.description.trim();
+    }
+    if (typeof result.data.response === 'string') {
+      return result.data.response.trim();
+    }
+  }
+
   if (typeof result.result === 'string') return result.result.trim();
   return '';
+}
+
+function directRecognitionObject(result: any): Record<string, unknown> | null {
+  if (!result || typeof result !== 'object') return null;
+  const candidates = [result, result.response, result.result, result.data];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      continue;
+    }
+    if ('recognized' in candidate || 'name' in candidate || 'category' in candidate) {
+      return candidate as Record<string, unknown>;
+    }
+  }
+  return null;
 }
 
 function normalizeRecognition(parsed: Record<string, unknown>): Recognition {
@@ -200,17 +245,24 @@ Rules:
           ],
         },
       ],
-      max_tokens: 360,
+      max_completion_tokens: 700,
+      reasoning_effort: 'low',
       temperature: 0.1,
     });
 
+    const direct = directRecognitionObject(result);
     const raw = extractModelText(result);
-    if (!raw) {
+    const parsed = direct ?? (raw ? extractJson(raw) : null);
+
+    if (!raw && !direct) {
+      const responseShape = Object.keys(result ?? {}).slice(0, 12).join(',');
       console.warn('equipment recognition returned no readable text', result);
-      return jsonResponse({ error: 'empty_model_response' }, 502);
+      return jsonResponse({
+        error: 'empty_model_response',
+        responseShape: responseShape || 'unknown',
+      }, 502);
     }
 
-    const parsed = extractJson(raw);
     if (!parsed) {
       console.warn('equipment recognition returned non-JSON text', raw.slice(0, 800));
       return jsonResponse({ error: 'invalid_model_response' }, 502);
@@ -220,7 +272,7 @@ Rules:
     return jsonResponse({
       ...recognition,
       model: MODEL,
-      pipeline: 'multimodal-content-parts',
+      pipeline: 'multimodal-content-parts-v2',
     });
   } catch (error) {
     console.error('equipment multimodal recognition failed', error);
@@ -234,6 +286,6 @@ export function onRequestGet(context: any) {
     feature: 'equipment-recognition',
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
-    pipeline: 'multimodal-content-parts',
+    pipeline: 'multimodal-content-parts-v2',
   });
 }
