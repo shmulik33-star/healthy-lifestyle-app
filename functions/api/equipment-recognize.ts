@@ -12,6 +12,29 @@ const allowedCategories = [
   'אחר',
 ] as const;
 
+const recognitionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    recognized: { type: 'boolean' },
+    name: { type: 'string' },
+    category: { type: 'string', enum: [...allowedCategories] },
+    categoryDetail: { type: 'string' },
+    notes: { type: 'string' },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    reason: { type: 'string' },
+  },
+  required: [
+    'recognized',
+    'name',
+    'category',
+    'categoryDetail',
+    'notes',
+    'confidence',
+    'reason',
+  ],
+};
+
 type Recognition = {
   recognized: boolean;
   name: string;
@@ -74,8 +97,6 @@ function extractModelText(result: any): string {
   if (typeof result === 'string') return result.trim();
   if (!result || typeof result !== 'object') return '';
 
-  // Cloudflare's current ImageTextToText schema may return the generated text
-  // as `description` rather than the Text Generation `response` field.
   if (typeof result.description === 'string') return result.description.trim();
   if (typeof result.output_text === 'string') return result.output_text.trim();
   if (typeof result.text === 'string') return result.text.trim();
@@ -125,7 +146,16 @@ function extractModelText(result: any): string {
 
 function directRecognitionObject(result: any): Record<string, unknown> | null {
   if (!result || typeof result !== 'object') return null;
-  const candidates = [result, result.response, result.result, result.data];
+
+  const parsedChoice = result?.choices?.[0]?.message?.parsed;
+  const candidates = [
+    parsedChoice,
+    result,
+    result.response,
+    result.result,
+    result.data,
+  ];
+
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
       continue;
@@ -164,6 +194,77 @@ function normalizeRecognition(parsed: Record<string, unknown>): Recognition {
         : 0,
     reason: typeof parsed.reason === 'string' ? parsed.reason.trim() : '',
   };
+}
+
+function heuristicFromText(text: string): Recognition | null {
+  const value = text.toLowerCase();
+  const match = (
+    terms: string[],
+    name: string,
+    category: string,
+    confidence = 0.78,
+  ): Recognition | null => {
+    if (!terms.some((term) => value.includes(term))) return null;
+    return {
+      recognized: true,
+      name,
+      category,
+      categoryDetail: '',
+      notes: '',
+      confidence,
+      reason: 'הציוד זוהה מתוך תיאור חזותי ברור של התמונה.',
+    };
+  };
+
+  return (
+    match(['dumbbell', 'dumbbells', 'משקולת יד', 'משקולות יד'], 'משקולות יד', 'משקולות') ??
+    match(['kettlebell', 'קטלבל'], 'קטלבל', 'קטלבל') ??
+    match(['resistance band', 'exercise band', 'גומיית התנגדות', 'גומיה התנגדות'], 'גומיית התנגדות', 'גומיות התנגדות') ??
+    match(['hand gripper', 'grip strengthener', 'מחזק אחיזה'], 'מחזק אחיזה ליד', 'מזרן / אביזרים') ??
+    match(['barbell', 'ez bar', 'מוט משקולות'], 'מוט משקולות', 'מוטות') ??
+    match(['pull-up bar', 'pull up bar', 'מתח'], 'מתח', 'מוטות') ??
+    match(['weight bench', 'workout bench', 'ספסל אימון'], 'ספסל אימון', 'ספסלים') ??
+    match(['treadmill', 'הליכון'], 'הליכון', 'מכשירי אירובי') ??
+    match(['exercise bike', 'stationary bike', 'spin bike', 'אופני כושר'], 'אופני כושר', 'מכשירי אירובי') ??
+    match(['elliptical', 'אליפטי'], 'מכשיר אליפטי', 'מכשירי אירובי') ??
+    match(['rowing machine', 'rower', 'מכשיר חתירה'], 'מכשיר חתירה', 'מכשירי אירובי') ??
+    match(['cable machine', 'lat pulldown', 'leg press', 'multi gym', 'מכשיר כוח'], 'מכשיר כוח', 'מכשירי כוח') ??
+    match(['yoga mat', 'exercise mat', 'fitness mat', 'מזרן אימון'], 'מזרן אימון', 'מזרן / אביזרים') ??
+    match(['ab wheel', 'ab roller', 'גלגל בטן'], 'גלגל בטן', 'מזרן / אביזרים') ??
+    match(['jump rope', 'skipping rope', 'חבל קפיצה'], 'חבל קפיצה', 'מזרן / אביזרים') ??
+    match(['push-up bar', 'push up bar', 'pushup handle', 'ידיות שכיבות סמיכה'], 'ידיות שכיבות סמיכה', 'מזרן / אביזרים') ??
+    match(['foam roller', 'גליל עיסוי'], 'גליל עיסוי', 'מזרן / אביזרים')
+  );
+}
+
+async function structureDescription(
+  ai: any,
+  description: string,
+): Promise<Record<string, unknown> | null> {
+  const result = await ai.run(MODEL, {
+    messages: [
+      {
+        role: 'system',
+        content: 'Convert a visual description of fitness equipment into the requested structured object. Do not invent details.',
+      },
+      {
+        role: 'user',
+        content: `Visual description:\n${description.slice(0, 5000)}\n\nUse Hebrew text fields and classify into the allowed categories.`,
+      },
+    ],
+    response_format: {
+      type: 'json_schema',
+      json_schema: recognitionSchema,
+    },
+    max_completion_tokens: 500,
+    reasoning_effort: 'low',
+    temperature: 0,
+  });
+
+  const direct = directRecognitionObject(result);
+  if (direct) return direct;
+  const raw = extractModelText(result);
+  return raw ? extractJson(raw) : null;
 }
 
 export async function onRequestPost(context: any) {
@@ -210,17 +311,6 @@ export async function onRequestPost(context: any) {
 Identify the main fitness or exercise equipment visible in this image.
 Small home-training accessories are valid equipment, including hand grippers, resistance bands, ab wheels, jump ropes, push-up handles and foam rollers.
 
-Return ONLY one JSON object with this exact shape:
-{
-  "recognized": true,
-  "name": "short Hebrew name",
-  "category": "one exact category from the list",
-  "categoryDetail": "only if category is אחר, otherwise empty",
-  "notes": "only details clearly visible in the photo, otherwise empty",
-  "confidence": 0.0,
-  "reason": "short Hebrew explanation"
-}
-
 Allowed categories:
 ${categories}
 
@@ -245,6 +335,10 @@ Rules:
           ],
         },
       ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: recognitionSchema,
+      },
       max_completion_tokens: 700,
       reasoning_effort: 'low',
       temperature: 0.1,
@@ -252,7 +346,26 @@ Rules:
 
     const direct = directRecognitionObject(result);
     const raw = extractModelText(result);
-    const parsed = direct ?? (raw ? extractJson(raw) : null);
+    let parsed = direct ?? (raw ? extractJson(raw) : null);
+    let pipeline = 'vision-json-schema';
+
+    if (!parsed && raw) {
+      const heuristic = heuristicFromText(raw);
+      if (heuristic) {
+        return jsonResponse({
+          ...heuristic,
+          model: MODEL,
+          pipeline: 'vision-text-heuristic',
+        });
+      }
+
+      try {
+        parsed = await structureDescription(ai, raw);
+        if (parsed) pipeline = 'vision-text-structured-fallback';
+      } catch (fallbackError) {
+        console.warn('equipment structured fallback failed', fallbackError);
+      }
+    }
 
     if (!raw && !direct) {
       const responseShape = Object.keys(result ?? {}).slice(0, 12).join(',');
@@ -264,15 +377,15 @@ Rules:
     }
 
     if (!parsed) {
-      console.warn('equipment recognition returned non-JSON text', raw.slice(0, 800));
-      return jsonResponse({ error: 'invalid_model_response' }, 502);
+      console.warn('equipment recognition remained unstructured', raw.slice(0, 800));
+      return jsonResponse({ error: 'invalid_model_response_after_fallback' }, 502);
     }
 
     const recognition = normalizeRecognition(parsed);
     return jsonResponse({
       ...recognition,
       model: MODEL,
-      pipeline: 'multimodal-content-parts-v2',
+      pipeline,
     });
   } catch (error) {
     console.error('equipment multimodal recognition failed', error);
@@ -286,6 +399,6 @@ export function onRequestGet(context: any) {
     feature: 'equipment-recognition',
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
-    pipeline: 'multimodal-content-parts-v2',
+    pipeline: 'vision-json-schema-v3',
   });
 }
