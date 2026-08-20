@@ -167,12 +167,21 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
-                          if (item.source == 'photo')
-                            const Padding(
-                              padding: EdgeInsetsDirectional.only(start: 6),
+                          if (item.source == 'photo' || item.source == 'photo_ai')
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(start: 6),
                               child: Chip(
-                                avatar: Icon(Icons.photo_camera_outlined, size: 16),
-                                label: Text('צילום'),
+                                avatar: Icon(
+                                  item.source == 'photo_ai'
+                                      ? Icons.auto_awesome
+                                      : Icons.photo_camera_outlined,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  item.source == 'photo_ai'
+                                      ? 'צילום + AI'
+                                      : 'צילום',
+                                ),
                                 visualDensity: VisualDensity.compact,
                               ),
                             ),
