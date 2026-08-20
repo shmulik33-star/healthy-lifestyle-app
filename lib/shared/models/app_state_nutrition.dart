@@ -66,6 +66,15 @@ void _nutritionAddFood(
 }
 
 void _nutritionAddCustomFood(AppState state, FoodItem food) {
+  final replacedIds = state.customFoods
+      .where(
+        (existing) =>
+            existing.id == food.id ||
+            existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
+      )
+      .map((existing) => existing.id)
+      .toSet();
+
   state.customFoods.removeWhere(
     (existing) =>
         existing.id == food.id ||
@@ -74,7 +83,9 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
   state.customFoods.add(food);
 
   for (final pantryItem in state.pantryItems) {
-    if (AppState._sameFoodName(pantryItem.name, food.name)) {
+    if (replacedIds.contains(pantryItem.foodId) ||
+        (pantryItem.foodId.isEmpty &&
+            AppState._sameFoodName(pantryItem.name, food.name))) {
       pantryItem.foodId = food.id;
     }
   }
@@ -84,6 +95,11 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
 
 void _nutritionDeleteCustomFood(AppState state, FoodItem food) {
   state.customFoods.removeWhere((existing) => existing.id == food.id);
+  for (final pantryItem in state.pantryItems) {
+    if (pantryItem.foodId == food.id) {
+      pantryItem.foodId = '';
+    }
+  }
   state.notifyListeners();
   state._save();
 }
