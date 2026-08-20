@@ -210,7 +210,7 @@ class PantryScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: category,
+                  initialValue: category,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'קטגוריה'),
                   items: categories
