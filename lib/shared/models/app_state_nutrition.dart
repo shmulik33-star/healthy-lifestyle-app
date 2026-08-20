@@ -1,3 +1,7 @@
+// This file is a `part` of AppState's library and intentionally performs
+// ChangeNotifier lifecycle calls on the owning AppState instance.
+// ignore_for_file: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+
 part of 'app_state.dart';
 
 List<MealEntry> _nutritionMealsForDayAt(AppState state, DateTime now) {
