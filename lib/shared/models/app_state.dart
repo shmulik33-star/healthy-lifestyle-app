@@ -5,6 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/food_catalog.dart';
 import 'food.dart';
 
+part 'app_state_fitness.dart';
+part 'app_state_kosher.dart';
+part 'app_state_shopping.dart';
+
 class MealEntry {
   MealEntry({required this.foodId, required this.name, required this.quantity, required this.unit, required this.grams, required this.calories, required this.protein, required this.carbs, required this.fat, required this.type, required this.time});
   final String foodId;
@@ -226,8 +230,6 @@ class AppState extends ChangeNotifier {
     }
     try { state._readJson(jsonDecode(raw) as Map<String,dynamic>); } catch (_) {}
     if (state.dailyStateKey.isEmpty) {
-      // Upgrade path: keep the user's existing current-day values the first
-      // time this version is opened, then reset from the next boundary.
       state.dailyStateKey=state.dayKeyAt(DateTime.now());
     } else {
       state.ensureCurrentDay(now:DateTime.now(),notify:false,save:false);
@@ -342,8 +344,6 @@ class AppState extends ChangeNotifier {
 
   void setDayStartMinutes(int minutes){
     dayStartMinutes=minutes.clamp(0,1439);
-    // Changing the preference should not erase today's values. Re-anchor the
-    // current values to the newly chosen logical day and apply it from here on.
     dailyStateKey=dayKeyAt(DateTime.now());
     notifyListeners();
     _save();
@@ -366,31 +366,13 @@ class AppState extends ChangeNotifier {
 
   List<FoodItem> get allFoods => [...foodCatalog, ...customFoods];
 
-  DateTime? get lastMeatTime {
-    if(!kosherEnabled || !meatDairySeparationEnabled || meatWaitMinutes<=0) return null;
-    final xs=meals.where((m)=>m.type==KosherFoodType.meat).toList()
-      ..sort((a,b)=>b.time.compareTo(a.time));
-    return xs.isEmpty?null:xs.first.time;
-  }
-  DateTime? get dairyAllowedAt => lastMeatTime?.add(Duration(minutes:meatWaitMinutes));
-  bool get dairyAllowed {
-    if(!kosherEnabled || !meatDairySeparationEnabled || meatWaitMinutes<=0) return true;
-    final d=dairyAllowedAt;
-    return d==null||!DateTime.now().isBefore(d);
-  }
-  Duration get dairyRemaining {
-    final d=dairyAllowedAt;
-    if(d==null)return Duration.zero;
-    final r=d.difference(DateTime.now());
-    return r.isNegative?Duration.zero:r;
-  }
+  DateTime? get lastMeatTime => _kosherLastMeatTime(this);
+  DateTime? get dairyAllowedAt => _kosherDairyAllowedAt(this);
+  bool get dairyAllowed => _kosherDairyAllowed(this);
+  Duration get dairyRemaining => _kosherDairyRemaining(this);
 
-  bool foodAllowedForRecommendations(FoodItem food){
-    if(!kosherEnabled) return true;
-    if(food.kosherStatus != KosherStatus.kosher) return false;
-    if(!dairyAllowed && food.type==KosherFoodType.dairy) return false;
-    return true;
-  }
+  bool foodAllowedForRecommendations(FoodItem food) =>
+      _kosherFoodAllowedForRecommendations(this, food);
 
   FoodItem foodById(String id)=>allFoods.firstWhere((f)=>f.id==id);
 
@@ -530,85 +512,21 @@ class AppState extends ChangeNotifier {
     if(save)_save();
   }
 
-  Map<String,int> get shoppingTotals {
-    final totals=<String,int>{};
-    for(final day in weeklyPlan){
-      for(final meal in day.meals){
-        for(final e in meal.shopping.entries){ totals[e.key]=(totals[e.key]??0)+e.value; }
-      }
-    }
-    return totals;
-  }
+  Map<String,int> get shoppingTotals => _shoppingTotalsFor(this);
 
   void toggleShopping(String item,bool value){shoppingChecked[item]=value;notifyListeners();_save();}
 
-  String _shoppingCategory(String name) {
-    if(name.contains('ביצה')) return 'ביצים';
-    if(name.contains('עוף')||name.contains('פרגית')||name.contains('בשר')) return 'בשר ועוף';
-    if(name.contains('טונה')||name.contains('סלמון')||name.contains('דג')) return 'דגים';
-    if(name.contains('קוטג')||name.contains('יוגורט')||name.contains('גבינ')) return 'מוצרי חלב';
-    if(name.contains('ירק')||name.contains('תפוח')||name.contains('פרי')||name.contains('אבוקדו')) return 'ירקות ופירות';
-    if(name.contains('לחם')||name.contains('קינואה')||name.contains('עדשים')||name.contains('טחינה')||name.contains('שקדים')) return 'מזווה';
-    return 'אחר';
-  }
-
-  Map<String,double> get last7DayConsumption {
-    final since=DateTime.now().subtract(const Duration(days:7));
-    final totals=<String,double>{};
-    for(final m in meals.where((m)=>!m.time.isBefore(since))){
-      final key=m.foodId.isNotEmpty ? m.foodId : m.name;
-      if(key=='egg'||m.name.contains('ביצה')){
-        totals['ביצים']=(totals['ביצים']??0)+m.grams/55.0;
-      } else {
-        totals[m.name]=(totals[m.name]??0)+m.quantity;
-      }
-    }
-    return totals;
-  }
+  Map<String,double> get last7DayConsumption => _last7DayConsumptionFor(this);
 
   void buildSmartShoppingList({bool force=false}) {
     if(shoppingInitialized && !force) return;
-    final oldHome=<String,double>{for(final x in shoppingItems) x.name:x.haveAtHome};
-    final oldChecked=<String,bool>{for(final x in shoppingItems) x.name:x.checked};
-    final plan=shoppingTotals;
-    final consumption=last7DayConsumption;
-    final names=<String>{...plan.keys,...consumption.keys};
-    final next=<ShoppingItem>[];
-
-    for(final name in names){
-      final planned=(plan[name]??0).toDouble();
-      final consumed=(consumption[name]??0).toDouble();
-      // Use the larger signal: next week's plan or recent weekly consumption.
-      var need=planned>consumed ? planned : consumed;
-      if(name.contains('ביצים')){
-        // A small safety buffer and practical egg-package rounding.
-        need+=2;
-        final packs=[6.0,12.0,18.0,30.0];
-        need=packs.firstWhere((p)=>p>=need,orElse:()=>((need/6).ceil()*6).toDouble());
-      } else if(need>0) {
-        need=need.ceilToDouble();
-      }
-      final home=oldHome[name]??0;
-      final buy=(need-home).clamp(0,double.infinity).toDouble();
-      if(buy<=0 && home>0) continue;
-      final reasonParts=<String>[];
-      if(consumed>0) reasonParts.add('צריכה ב־7 הימים האחרונים: ${_fmt(consumed)}');
-      if(planned>0) reasonParts.add('מתוכנן בתפריט הבא: ${_fmt(planned)}');
-      if(home>0) reasonParts.add('סימנת שיש בבית: ${_fmt(home)}');
-      next.add(ShoppingItem(
-        id:'smart_${name.hashCode}', name:name, quantity:buy,
-        unit:name.contains('ביצים')?'יחידות':'יחידות/מנות',
-        category:_shoppingCategory(name), source:'חכם',
-        reason:reasonParts.join(' · '), checked:oldChecked[name]??false,
-        haveAtHome:home,
-      ));
-    }
-    shoppingItems..clear()..addAll(next);
+    shoppingItems
+      ..clear()
+      ..addAll(_smartShoppingItemsFor(this));
     shoppingInitialized=true;
-    notifyListeners(); _save();
+    notifyListeners();
+    _save();
   }
-
-  static String _fmt(double v)=>v==v.roundToDouble()?v.toInt().toString():v.toStringAsFixed(1);
 
   void addShoppingItem(String name,double quantity,String unit,String category){
     shoppingItems.add(ShoppingItem(
@@ -625,12 +543,7 @@ class AppState extends ChangeNotifier {
   void deleteShoppingItem(ShoppingItem item){shoppingItems.remove(item);notifyListeners();_save();}
   void toggleSmartShopping(ShoppingItem item,bool value){item.checked=value;notifyListeners();_save();}
 
-  PantryItem? pantryByName(String name) {
-    for (final p in pantryItems) {
-      if (p.name == name) return p;
-    }
-    return null;
-  }
+  PantryItem? pantryByName(String name) => _pantryByExactName(this, name);
 
   void addPantryItem(
     String name,
@@ -741,24 +654,10 @@ class AppState extends ChangeNotifier {
     return 'המלאי בבית נראה טוב כרגע.';
   }
 
-  List<WorkoutExercise> get todayWorkout {
-    final result=<WorkoutExercise>[];
-    void addIf(String equipmentName, WorkoutExercise exercise){ if(equipment[equipmentName]==true) result.add(exercise); }
-    addIf('Lat Pulldown', const WorkoutExercise('משיכת פולי עליון',3,12,'Lat Pulldown','גב'));
-    addIf('Seated Row', const WorkoutExercise('חתירה בישיבה',3,12,'Seated Row','גב'));
-    addIf('Cable Machine', const WorkoutExercise('כפיפת מרפקים בכבל',3,10,'Cable Machine','יד קדמית'));
-    addIf('משקולות יד', const WorkoutExercise('כפיפת מרפקים עם משקולות',3,10,'משקולות יד','יד קדמית'));
-    if(result.length<3 && equipment['גומיות התנגדות']==true){ result.add(const WorkoutExercise('חתירה עם גומייה',3,15,'גומיות התנגדות','גב')); }
-    if(result.length<3){ result.add(const WorkoutExercise('יד־רגל נגדית (Bird Dog)',3,10,'ללא ציוד','ליבה וגב')); }
-    return result.take(5).toList();
-  }
+  List<WorkoutExercise> get todayWorkout => _fitnessTodayWorkout(this);
 
-  WorkoutExercise alternativeFor(WorkoutExercise current){
-    if(current.muscleGroup=='גב' && equipment['Cable Machine']==true && current.equipment!='Cable Machine') return const WorkoutExercise('משיכה בזרועות ישרות בכבל',3,12,'Cable Machine','גב');
-    if(current.muscleGroup=='יד קדמית' && equipment['משקולות יד']==true) return const WorkoutExercise('כפיפת פטיש עם משקולות',3,10,'משקולות יד','יד קדמית');
-    if(equipment['גומיות התנגדות']==true) return WorkoutExercise('תרגיל חלופי עם גומייה',3,15,'גומיות התנגדות',current.muscleGroup);
-    return WorkoutExercise('תרגיל משקל גוף חלופי',3,12,'ללא ציוד',current.muscleGroup);
-  }
+  WorkoutExercise alternativeFor(WorkoutExercise current) =>
+      _fitnessAlternativeFor(this, current);
 
   List<String> get smartFoodSuggestions {
     final allowed=allFoods.where(foodAllowedForRecommendations).toList()
@@ -767,14 +666,7 @@ class AppState extends ChangeNotifier {
     return allowed.take(3).map((f)=>f.name).toList();
   }
 
-  String get kosherStateText {
-    if(!kosherEnabled) return 'לא הוגדרה שמירת כשרות';
-    if(!meatDairySeparationEnabled || meatWaitMinutes<=0) return 'כשרות פעילה ללא טיימר המתנה';
-    if(dairyAllowed) return 'אין כרגע מגבלת חלב';
-    final h=dairyRemaining.inHours;
-    final m=dairyRemaining.inMinutes.remainder(60);
-    return 'נשארו עוד ${h>0?'$h שעות ו־':''}$m דקות עד חלבי לפי ההגדרה שלך';
-  }
+  String get kosherStateText => _kosherStateText(this);
 
   String coachResponse(String question){
     final q=question.trim();
