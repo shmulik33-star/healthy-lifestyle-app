@@ -45,15 +45,25 @@ String _shoppingCategoryFor(String name) {
   return 'אחר';
 }
 
+String _shoppingCurrentFoodName(AppState state, MealEntry meal) {
+  if (meal.foodId.isNotEmpty) {
+    for (final food in state.allFoods) {
+      if (food.id == meal.foodId) return food.name;
+    }
+  }
+  return meal.name;
+}
+
 Map<String, double> _last7DayConsumptionFor(AppState state) {
   final since = DateTime.now().subtract(const Duration(days: 7));
   final totals = <String, double>{};
   for (final meal in state.meals.where((m) => !m.time.isBefore(since))) {
-    final key = meal.foodId.isNotEmpty ? meal.foodId : meal.name;
-    if (key == 'egg' || meal.name.contains('ביצה')) {
+    final currentName = _shoppingCurrentFoodName(state, meal);
+    if (meal.foodId == 'egg' ||
+        AppState._sameFoodName(currentName, 'ביצה')) {
       totals['ביצים'] = (totals['ביצים'] ?? 0) + meal.grams / 55.0;
     } else {
-      totals[meal.name] = (totals[meal.name] ?? 0) + meal.quantity;
+      totals[currentName] = (totals[currentName] ?? 0) + meal.quantity;
     }
   }
   return totals;
@@ -75,8 +85,9 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
     final planned = (plan[name] ?? 0).toDouble();
     final consumed = (consumption[name] ?? 0).toDouble();
     var need = planned > consumed ? planned : consumed;
+    final isEggs = AppState._sameFoodName(name, 'ביצים');
 
-    if (name.contains('ביצים')) {
+    if (isEggs) {
       need += 2;
       final packs = <double>[6, 12, 18, 30];
       need = packs.firstWhere(
@@ -109,7 +120,7 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
         id: 'smart_${name.hashCode}',
         name: name,
         quantity: buy,
-        unit: name.contains('ביצים') ? 'יחידות' : 'יחידות/מנות',
+        unit: isEggs ? 'יחידות' : 'יחידות/מנות',
         category: _shoppingCategoryFor(name),
         source: 'חכם',
         reason: reasonParts.join(' · '),
