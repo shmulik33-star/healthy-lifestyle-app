@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../data/food_catalog.dart';
+import '../storage/app_local_storage.dart';
 import 'food.dart';
 
 part 'app_state_fitness.dart';
@@ -217,36 +217,96 @@ class AppState extends ChangeNotifier {
   final List<PantryItem> pantryItems = [];
 
   static const _storageKey = 'stage10_state_v1';
+  static const _backupStorageKey = 'stage10_state_v1_backup';
   static const _oldStorageKey = 'stage9_state_v1';
+  static const _schemaVersion = 1;
+
+  static Map<String,dynamic> _decodeAndMigrate(String raw) {
+    final decoded=jsonDecode(raw);
+    if(decoded is! Map){
+      throw const FormatException('Saved AppState is not a JSON object');
+    }
+    var data=Map<String,dynamic>.from(decoded);
+    var version=(data['schemaVersion'] as num?)?.toInt()??0;
+    if(version>_schemaVersion){
+      throw StateError('Saved AppState schema $version is newer than supported $_schemaVersion');
+    }
+    while(version<_schemaVersion){
+      switch(version){
+        case 0:
+          data={...data,'schemaVersion':1};
+          version=1;
+          break;
+        default:
+          throw StateError('No AppState migration from schema $version');
+      }
+    }
+    return data;
+  }
+
+  static bool _isValidStoredState(String raw) {
+    try {
+      _decodeAndMigrate(raw);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static Future<AppState> load() async {
     final state = AppState();
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_storageKey) ?? prefs.getString(_oldStorageKey);
-    if (raw == null) {
+    final primary = await AppLocalStorage.readString(_storageKey) ??
+        await AppLocalStorage.readString(_oldStorageKey);
+    final backup = await AppLocalStorage.readString(_backupStorageKey);
+    var loaded=false;
+
+    if(primary!=null){
+      try {
+        state._readJson(_decodeAndMigrate(primary));
+        loaded=true;
+      } catch (error, stack) {
+        debugPrint('AppState: failed to load primary saved state: $error');
+        debugPrintStack(stackTrace:stack);
+      }
+    }
+
+    if(!loaded && backup!=null){
+      try {
+        state._readJson(_decodeAndMigrate(backup));
+        loaded=true;
+        debugPrint('AppState: recovered local data from backup.');
+      } catch (error, stack) {
+        debugPrint('AppState: failed to load backup saved state: $error');
+        debugPrintStack(stackTrace:stack);
+      }
+    }
+
+    if(!loaded){
       state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
       state.dailyStateKey=state.dayKeyAt(DateTime.now());
       state.generateWeeklyPlan(save:false);
-      await state._save();
-      return state;
-    }
-    try { state._readJson(jsonDecode(raw) as Map<String,dynamic>); } catch (_) {}
-    if (state.dailyStateKey.isEmpty) {
+    } else if (state.dailyStateKey.isEmpty) {
       state.dailyStateKey=state.dayKeyAt(DateTime.now());
     } else {
       state.ensureCurrentDay(now:DateTime.now(),notify:false,save:false);
     }
+
     if (state.weeklyPlan.isEmpty) state.generateWeeklyPlan(save:false);
     await state._save();
     return state;
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, jsonEncode(_toJson()));
+    final encoded=jsonEncode(_toJson());
+    final previous=await AppLocalStorage.readString(_storageKey);
+    if(previous!=null && previous!=encoded && _isValidStoredState(previous)){
+      await AppLocalStorage.writeString(_backupStorageKey,previous);
+    }
+    await AppLocalStorage.writeString(_storageKey,encoded);
   }
 
   Map<String,dynamic> _toJson()=>{
+    'schemaVersion':_schemaVersion,
     'firstName':firstName,'age':age,'heightCm':heightCm,'currentWeight':currentWeight,'targetWeight':targetWeight,
     'calorieTarget':calorieTarget,'proteinTarget':proteinTarget,'carbTarget':carbTarget,'fatTarget':fatTarget,
     'waterCups':waterCups,'waterTarget':waterTarget,'steps':steps,'stepsTarget':stepsTarget,'workoutCompleted':workoutCompleted,
