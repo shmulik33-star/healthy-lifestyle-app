@@ -7,6 +7,8 @@ import 'food.dart';
 
 part 'app_state_fitness.dart';
 part 'app_state_kosher.dart';
+part 'app_state_nutrition.dart';
+part 'app_state_profile.dart';
 part 'app_state_shopping.dart';
 
 class MealEntry {
@@ -349,22 +351,15 @@ class AppState extends ChangeNotifier {
     _save();
   }
 
-  List<MealEntry> mealsForDayAt(DateTime now) {
-    final start=dayStartAt(now);
-    final end=dayEndAt(now);
-    return meals.where((m)=>!m.time.isBefore(start)&&m.time.isBefore(end)).toList()
-      ..sort((a,b)=>a.time.compareTo(b.time));
-  }
-
-  int get caloriesEaten => todayMeals.fold(0,(s,m)=>s+m.calories);
-  double get proteinEaten => todayMeals.fold(0,(s,m)=>s+m.protein);
-  double get carbsEaten => todayMeals.fold(0,(s,m)=>s+m.carbs);
-  double get fatEaten => todayMeals.fold(0,(s,m)=>s+m.fat);
-  int get remainingCalories => (calorieTarget-caloriesEaten).clamp(0, calorieTarget);
-  double get remainingProtein => (proteinTarget-proteinEaten).clamp(0, proteinTarget.toDouble());
+  List<MealEntry> mealsForDayAt(DateTime now) => _nutritionMealsForDayAt(this, now);
+  int get caloriesEaten => _nutritionCaloriesEaten(this);
+  double get proteinEaten => _nutritionProteinEaten(this);
+  double get carbsEaten => _nutritionCarbsEaten(this);
+  double get fatEaten => _nutritionFatEaten(this);
+  int get remainingCalories => _nutritionRemainingCalories(this);
+  double get remainingProtein => _nutritionRemainingProtein(this);
   List<MealEntry> get todayMeals => mealsForDayAt(DateTime.now());
-
-  List<FoodItem> get allFoods => [...foodCatalog, ...customFoods];
+  List<FoodItem> get allFoods => _nutritionAllFoods(this);
 
   DateTime? get lastMeatTime => _kosherLastMeatTime(this);
   DateTime? get dairyAllowedAt => _kosherDairyAllowedAt(this);
@@ -374,41 +369,11 @@ class AppState extends ChangeNotifier {
   bool foodAllowedForRecommendations(FoodItem food) =>
       _kosherFoodAllowedForRecommendations(this, food);
 
-  FoodItem foodById(String id)=>allFoods.firstWhere((f)=>f.id==id);
-
-  void addFood(FoodItem food,double quantity,String unit) {
-    ensureCurrentDay();
-    final g=food.gramsFor(unit,quantity);
-    final entry=MealEntry(
-      foodId:food.id,name:food.name,quantity:quantity,unit:unit,grams:g,
-      calories:food.caloriesFor(unit,quantity),
-      protein:food.proteinFor(unit,quantity),
-      carbs:food.carbsFor(unit,quantity),
-      fat:food.fatFor(unit,quantity),
-      type:food.type,time:DateTime.now(),
-    );
-    meals.add(entry);
-    consumeFromPantryByMeal(entry);
-    notifyListeners();
-    _save();
-  }
-
-  void addCustomFood(FoodItem food){
-    customFoods.removeWhere((f)=>f.id==food.id || f.name.trim().toLowerCase()==food.name.trim().toLowerCase());
-    customFoods.add(food);
-
-    for(final p in pantryItems){
-      if(_sameFoodName(p.name,food.name)) p.foodId=food.id;
-    }
-    notifyListeners();
-    _save();
-  }
-
-  void deleteCustomFood(FoodItem food){
-    customFoods.removeWhere((f)=>f.id==food.id);
-    notifyListeners();
-    _save();
-  }
+  FoodItem foodById(String id) => _nutritionFoodById(this, id);
+  void addFood(FoodItem food,double quantity,String unit) =>
+      _nutritionAddFood(this, food, quantity, unit);
+  void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
+  void deleteCustomFood(FoodItem food) => _nutritionDeleteCustomFood(this, food);
 
   static bool _sameFoodName(String a,String b){
     final rawA=a.trim().toLowerCase();
@@ -422,100 +387,44 @@ class AppState extends ChangeNotifier {
     final na=n(rawA), nb=n(rawB);
     return na==nb || na.contains(nb) || nb.contains(na);
   }
-  void removeMeal(MealEntry meal){meals.remove(meal);notifyListeners();_save();}
+
+  void removeMeal(MealEntry meal) => _nutritionRemoveMeal(this, meal);
   void addWater(){ensureCurrentDay();if(waterCups<20)waterCups++;notifyListeners();_save();}
   void completeWorkout(){ensureCurrentDay();workoutCompleted=true;notifyListeners();_save();}
   void toggleEquipment(String name,bool value){equipment[name]=value;notifyListeners();_save();}
+
   void updateProfile({
     required String name,required double weight,required double target,
     required int calories,required int protein,String? goal,String? activity,
     int? workoutDays,String? style,bool? keepKosher,bool? separateMeatDairy,
     int? waitMinutes,int? dailyStartMinutes,
-  }){
-    firstName=name; currentWeight=weight; targetWeight=target;
-    calorieTarget=calories; proteinTarget=protein;
-    if(goal!=null) primaryGoal=goal;
-    if(activity!=null) activityLevel=activity;
-    if(workoutDays!=null) workoutDaysPerWeek=workoutDays;
-    if(style!=null) eatingStyle=style;
-    if(keepKosher!=null) kosherEnabled=keepKosher;
-    if(separateMeatDairy!=null) meatDairySeparationEnabled=separateMeatDairy;
-    if(waitMinutes!=null) meatWaitMinutes=waitMinutes;
-    if(dailyStartMinutes!=null){
-      dayStartMinutes=dailyStartMinutes.clamp(0,1439);
-      dailyStateKey=dayKeyAt(DateTime.now());
-    }
-    notifyListeners(); generateWeeklyPlan();
-  }
+  }) => _profileUpdate(
+    this,
+    name:name,
+    weight:weight,
+    target:target,
+    calories:calories,
+    protein:protein,
+    goal:goal,
+    activity:activity,
+    workoutDays:workoutDays,
+    style:style,
+    keepKosher:keepKosher,
+    separateMeatDairy:separateMeatDairy,
+    waitMinutes:waitMinutes,
+    dailyStartMinutes:dailyStartMinutes,
+  );
 
-  int suggestedCalories() {
-    final base = (currentWeight * 22).round();
-    final factor = switch(activityLevel){'נמוכה'=>1.15,'גבוהה'=>1.45,_=>1.30};
-    var estimate = (base * factor).round();
-    if(primaryGoal=='ירידה במשקל') estimate -= 350;
-    if(primaryGoal=='עלייה במסת שריר') estimate += 200;
-    return estimate.clamp(1200, 4000);
-  }
-
-  int suggestedProtein() {
-    final factor = primaryGoal=='עלייה במסת שריר' ? 1.8 : 1.5;
-    return (currentWeight * factor).round().clamp(60, 250);
-  }
-
-  String get dailyInsight {
-    if(caloriesEaten==0) return 'עוד לא תיעדת ארוחה היום. התחלה פשוטה היא לתעד את הארוחה הבאה בלי לחפש דיוק מושלם.';
-    if(proteinEaten < proteinTarget * .55 && caloriesEaten > calorieTarget * .55) return 'יותר ממחצית הקלוריות כבר נוצלו, אבל החלבון עדיין נמוך יחסית. בארוחה הבאה כדאי לתת עדיפות למקור חלבון.';
-    if(waterCups < waterTarget * .5) return 'המים מעט מאחור היום. אפשר להוסיף כוס עכשיו ולהמשיך בהדרגה.';
-    if(!dairyAllowed) return 'מצב הכשרות כרגע בשרי. ההמלצות מסוננות לפי זמן ההמתנה שהגדרת בפרופיל.';
-    return 'היום מתקדם בצורה מאוזנת. נשארו $remainingCalories קלוריות וכ-${remainingProtein.toStringAsFixed(0)} גרם חלבון ליעד.';
-  }
-
-  String get weightTrend {
-    if(weights.length < 2) return 'נדרשות לפחות שתי שקילות כדי לזהות מגמה.';
-    final sorted=[...weights]..sort((a,b)=>a.date.compareTo(b.date));
-    final delta=sorted.last.weight-sorted.first.weight;
-    if(delta.abs()<0.2) return 'המשקל יציב יחסית בתקופה המתועדת.';
-    return delta<0 ? 'ירידה של ${delta.abs().toStringAsFixed(1)} ק״ג בתקופה המתועדת.' : 'עלייה של ${delta.toStringAsFixed(1)} ק״ג בתקופה המתועדת.';
-  }
-  void addWeight(double value){currentWeight=value;weights.add(WeightEntry(DateTime.now(),value));notifyListeners();_save();}
-
-  void generateWeeklyPlan({bool save=true}) {
-    final days=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
-    final breakfasts=[
-      PlannedMeal(title:'בוקר',description:'2 ביצים, סלט וטחינה',type:KosherFoodType.pareve,calories:360,shopping:{'ביצים':2,'ירקות לסלט':2,'טחינה':1}),
-      PlannedMeal(title:'בוקר',description:'יוגורט עשיר בחלבון ושקדים',type:KosherFoodType.dairy,calories:300,shopping:{'יוגורט עשיר בחלבון':1,'שקדים':1}),
-      PlannedMeal(title:'בוקר',description:'קוטג׳, ירקות ופרוסת לחם מלא',type:KosherFoodType.dairy,calories:340,shopping:{'קוטג׳ 5%':1,'ירקות לסלט':2,'לחם מלא':2}),
-    ];
-    final lunches=[
-      PlannedMeal(title:'צהריים',description:'חזה עוף, סלט גדול וכף טחינה',type:KosherFoodType.meat,calories:550,shopping:{'חזה עוף':1,'ירקות לסלט':4,'טחינה':1}),
-      PlannedMeal(title:'צהריים',description:'פרגית, ירקות וקינואה',type:KosherFoodType.meat,calories:620,shopping:{'פרגית':1,'ירקות לסלט':3,'קינואה':1}),
-      PlannedMeal(title:'צהריים',description:'סלמון, ירקות ועדשים',type:KosherFoodType.pareve,calories:560,shopping:{'סלמון':1,'ירקות לסלט':3,'עדשים':1}),
-    ];
-    final dinnersPareve=[
-      PlannedMeal(title:'ערב',description:'טונה, ביצה וסלט גדול',type:KosherFoodType.pareve,calories:410,shopping:{'טונה במים':1,'ביצים':1,'ירקות לסלט':3}),
-      PlannedMeal(title:'ערב',description:'טופו מוקפץ עם ירקות',type:KosherFoodType.pareve,calories:420,shopping:{'טופו':1,'ירקות לסלט':3}),
-      PlannedMeal(title:'ערב',description:'ביצים, אבוקדו וירקות',type:KosherFoodType.pareve,calories:430,shopping:{'ביצים':2,'אבוקדו':1,'ירקות לסלט':2}),
-    ];
-    final dinnersDairy=[
-      PlannedMeal(title:'ערב',description:'קוטג׳, סלט ופרוסת לחם מלא',type:KosherFoodType.dairy,calories:390,shopping:{'קוטג׳ 5%':1,'ירקות לסלט':3,'לחם מלא':2}),
-      PlannedMeal(title:'ערב',description:'יוגורט עשיר בחלבון, פרי ושקדים',type:KosherFoodType.dairy,calories:360,shopping:{'יוגורט עשיר בחלבון':1,'תפוח':1,'שקדים':1}),
-    ];
-    final snack=PlannedMeal(title:'נשנוש',description:'פרי + חופן קטן של שקדים',type:KosherFoodType.pareve,calories:180,shopping:{'פרי':1,'שקדים':1});
-    weeklyPlan.clear();
-    for(var i=0;i<days.length;i++){
-      final breakfast=breakfasts[i%breakfasts.length];
-      final lunch=lunches[i%lunches.length];
-      final dinner=lunch.type==KosherFoodType.meat ? dinnersPareve[i%dinnersPareve.length] : dinnersDairy[i%dinnersDairy.length];
-      weeklyPlan.add(PlannedDay(day:days[i],meals:[breakfast,lunch,dinner,snack]));
-    }
-    notifyListeners();
-    if(save)_save();
-  }
+  int suggestedCalories() => _profileSuggestedCalories(this);
+  int suggestedProtein() => _profileSuggestedProtein(this);
+  String get dailyInsight => _nutritionDailyInsight(this);
+  String get weightTrend => _profileWeightTrend(this);
+  void addWeight(double value) => _profileAddWeight(this, value);
+  void generateWeeklyPlan({bool save=true}) =>
+      _nutritionGenerateWeeklyPlan(this, save: save);
 
   Map<String,int> get shoppingTotals => _shoppingTotalsFor(this);
-
   void toggleShopping(String item,bool value){shoppingChecked[item]=value;notifyListeners();_save();}
-
   Map<String,double> get last7DayConsumption => _last7DayConsumptionFor(this);
 
   void buildSmartShoppingList({bool force=false}) {
@@ -655,17 +564,9 @@ class AppState extends ChangeNotifier {
   }
 
   List<WorkoutExercise> get todayWorkout => _fitnessTodayWorkout(this);
-
   WorkoutExercise alternativeFor(WorkoutExercise current) =>
       _fitnessAlternativeFor(this, current);
-
-  List<String> get smartFoodSuggestions {
-    final allowed=allFoods.where(foodAllowedForRecommendations).toList()
-      ..sort((a,b)=>b.proteinPer100g.compareTo(a.proteinPer100g));
-    if(allowed.isEmpty) return ['לא מצאתי כרגע מזון מתאים לכל ההגדרות'];
-    return allowed.take(3).map((f)=>f.name).toList();
-  }
-
+  List<String> get smartFoodSuggestions => _nutritionSmartFoodSuggestions(this);
   String get kosherStateText => _kosherStateText(this);
 
   String coachResponse(String question){
