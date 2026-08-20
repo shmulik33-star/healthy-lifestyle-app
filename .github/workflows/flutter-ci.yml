@@ -53,6 +53,26 @@ jobs:
           command: pages deploy build/web --project-name=healthy-lifestyle-app --branch=preview
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Smoke-test preview runtime
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://preview.healthy-lifestyle-app.pages.dev/api/equipment-recognize"
+          response=""
+          for attempt in {1..12}; do
+            response="$(curl --silent --show-error --fail "$endpoint" || true)"
+            if echo "$response" | grep -q '"status":"ok"' && \
+               echo "$response" | grep -q '"aiBinding":true'; then
+              echo "Preview runtime smoke test passed."
+              exit 0
+            fi
+            echo "Preview endpoint not ready yet (attempt $attempt/12)."
+            sleep 5
+          done
+          echo "Preview runtime smoke test failed. Last response: $response"
+          exit 1
+
       - name: Set main as Cloudflare production branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
@@ -73,3 +93,23 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy build/web --project-name=healthy-lifestyle-app --branch=main
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke-test production runtime
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://healthy-lifestyle-app.pages.dev/api/equipment-recognize"
+          response=""
+          for attempt in {1..12}; do
+            response="$(curl --silent --show-error --fail "$endpoint" || true)"
+            if echo "$response" | grep -q '"status":"ok"' && \
+               echo "$response" | grep -q '"aiBinding":true'; then
+              echo "Production runtime smoke test passed."
+              exit 0
+            fi
+            echo "Production endpoint not ready yet (attempt $attempt/12)."
+            sleep 5
+          done
+          echo "Production runtime smoke test failed. Last response: $response"
+          exit 1
