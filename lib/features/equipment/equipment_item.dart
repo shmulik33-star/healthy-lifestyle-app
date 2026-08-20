@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../shared/storage/app_local_storage.dart';
 
 class CustomEquipmentItem {
   const CustomEquipmentItem({
@@ -92,8 +92,7 @@ class EquipmentStore {
   ];
 
   static Future<List<CustomEquipmentItem>> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
+    final raw = await AppLocalStorage.readString(storageKey);
     if (raw == null || raw.isEmpty) return <CustomEquipmentItem>[];
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
@@ -109,8 +108,7 @@ class EquipmentStore {
   }
 
   static Future<void> save(List<CustomEquipmentItem> items) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    await AppLocalStorage.writeString(
       storageKey,
       jsonEncode(items.map((e) => e.toJson()).toList()),
     );
