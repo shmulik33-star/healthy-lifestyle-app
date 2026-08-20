@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:healthy_lifestyle_app/shared/models/app_state.dart';
-import 'package:healthy_lifestyle_app/shared/models/food.dart';
+import 'package:healthy_lifestyle_stage9/shared/models/app_state.dart';
+import 'package:healthy_lifestyle_stage9/shared/models/food.dart';
 
 void main() {
   test('nutrition public API keeps logical-day totals', () {
