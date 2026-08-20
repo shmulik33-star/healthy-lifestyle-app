@@ -375,17 +375,27 @@ class AppState extends ChangeNotifier {
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
   void deleteCustomFood(FoodItem food) => _nutritionDeleteCustomFood(this, food);
 
+  // IDs are the source of truth whenever they exist. Name matching is only
+  // a compatibility fallback for legacy or manually entered pantry data.
   static bool _sameFoodName(String a,String b){
-    final rawA=a.trim().toLowerCase();
-    final rawB=b.trim().toLowerCase();
+    String normalize(String value)=>value
+      .trim()
+      .toLowerCase()
+      .replaceAll('׳','')
+      .replaceAll("'",'')
+      .replaceAll(RegExp(r'\s+'),' ');
+    String singularize(String value){
+      var result=normalize(value);
+      if(result.length>2 && (result.endsWith('ים') || result.endsWith('ות'))){
+        result=result.substring(0,result.length-2);
+      }
+      return result;
+    }
+    final rawA=normalize(a);
+    final rawB=normalize(b);
+    if(rawA==rawB)return true;
     if(rawA.contains('ביצ') && rawB.contains('ביצ')) return true;
-    if(rawA.contains('טונה') && rawB.contains('טונה')) return true;
-    String n(String x)=>x
-      .replaceAll('׳','').replaceAll("'",'')
-      .replaceAll('ים','').replaceAll('ות','')
-      .trim().toLowerCase();
-    final na=n(rawA), nb=n(rawB);
-    return na==nb || na.contains(nb) || nb.contains(na);
+    return singularize(rawA)==singularize(rawB);
   }
 
   void removeMeal(MealEntry meal) => _nutritionRemoveMeal(this, meal);
@@ -469,8 +479,13 @@ class AppState extends ChangeNotifier {
     }
     PantryItem? existing;
     for(final p in pantryItems){
-      if((foodId.isNotEmpty && p.foodId==foodId) || _sameFoodName(p.name,name)){
-        existing=p; break;
+      final bothIdsKnown=foodId.isNotEmpty && p.foodId.isNotEmpty;
+      final isSame=bothIdsKnown
+          ? p.foodId==foodId
+          : _sameFoodName(p.name,name);
+      if(isSame){
+        existing=p;
+        break;
       }
     }
     if (existing != null) {
@@ -502,7 +517,18 @@ class AppState extends ChangeNotifier {
     String? category,
     double? lowStockThreshold,
   }) {
-    if (name != null) item.name = name;
+    if (name != null && name != item.name) {
+      item.name = name;
+      item.foodId = '';
+      for(final food in allFoods){
+        if(_sameFoodName(food.name,name)){
+          item.foodId=food.id;
+          break;
+        }
+      }
+    } else if (name != null) {
+      item.name = name;
+    }
     if (quantity != null) item.quantity = quantity;
     if (unit != null) item.unit = unit;
     if (category != null) item.category = category;
@@ -534,6 +560,7 @@ class AppState extends ChangeNotifier {
     }
     if(item==null){
       for(final p in pantryItems){
+        if(meal.foodId.isNotEmpty && p.foodId.isNotEmpty) continue;
         if(_sameFoodName(p.name,meal.name)){ item=p; break; }
       }
     }
