@@ -50,7 +50,7 @@ Map<String, double> _last7DayConsumptionFor(AppState state) {
   final totals = <String, double>{};
   for (final meal in state.meals.where((m) => !m.time.isBefore(since))) {
     final key = meal.foodId.isNotEmpty ? meal.foodId : meal.name;
-    if (key == 'egg' || meal.name.contains('ביצה')) {
+    if (key == 'egg' || AppState._sameFoodName(meal.name, 'ביצה')) {
       totals['ביצים'] = (totals['ביצים'] ?? 0) + meal.grams / 55.0;
     } else {
       totals[meal.name] = (totals[meal.name] ?? 0) + meal.quantity;
@@ -75,8 +75,9 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
     final planned = (plan[name] ?? 0).toDouble();
     final consumed = (consumption[name] ?? 0).toDouble();
     var need = planned > consumed ? planned : consumed;
+    final isEggs = AppState._sameFoodName(name, 'ביצים');
 
-    if (name.contains('ביצים')) {
+    if (isEggs) {
       need += 2;
       final packs = <double>[6, 12, 18, 30];
       need = packs.firstWhere(
@@ -109,7 +110,7 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
         id: 'smart_${name.hashCode}',
         name: name,
         quantity: buy,
-        unit: name.contains('ביצים') ? 'יחידות' : 'יחידות/מנות',
+        unit: isEggs ? 'יחידות' : 'יחידות/מנות',
         category: _shoppingCategoryFor(name),
         source: 'חכם',
         reason: reasonParts.join(' · '),
