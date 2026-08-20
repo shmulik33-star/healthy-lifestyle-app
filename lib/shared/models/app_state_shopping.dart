@@ -45,15 +45,25 @@ String _shoppingCategoryFor(String name) {
   return 'אחר';
 }
 
+String _shoppingCurrentFoodName(AppState state, MealEntry meal) {
+  if (meal.foodId.isNotEmpty) {
+    for (final food in state.allFoods) {
+      if (food.id == meal.foodId) return food.name;
+    }
+  }
+  return meal.name;
+}
+
 Map<String, double> _last7DayConsumptionFor(AppState state) {
   final since = DateTime.now().subtract(const Duration(days: 7));
   final totals = <String, double>{};
   for (final meal in state.meals.where((m) => !m.time.isBefore(since))) {
-    final key = meal.foodId.isNotEmpty ? meal.foodId : meal.name;
-    if (key == 'egg' || AppState._sameFoodName(meal.name, 'ביצה')) {
+    final currentName = _shoppingCurrentFoodName(state, meal);
+    if (meal.foodId == 'egg' ||
+        AppState._sameFoodName(currentName, 'ביצה')) {
       totals['ביצים'] = (totals['ביצים'] ?? 0) + meal.grams / 55.0;
     } else {
-      totals[meal.name] = (totals[meal.name] ?? 0) + meal.quantity;
+      totals[currentName] = (totals[currentName] ?? 0) + meal.quantity;
     }
   }
   return totals;
