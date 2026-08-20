@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../shared/storage/app_local_storage.dart';
 
 class ProfileGoalsStore {
   static const storageKey = 'profile_goals_v1';
@@ -13,8 +13,7 @@ class ProfileGoalsStore {
   ];
 
   static Future<List<String>> load({required String fallbackGoal}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
+    final raw = await AppLocalStorage.readString(storageKey);
     if (raw == null || raw.isEmpty) return [fallbackGoal];
 
     try {
@@ -34,8 +33,7 @@ class ProfileGoalsStore {
   static Future<void> save(List<String> goals) async {
     final clean = goals.where(options.contains).toSet().toList();
     if (clean.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(storageKey, jsonEncode(clean));
+    await AppLocalStorage.writeString(storageKey, jsonEncode(clean));
   }
 
   static List<String> toggleGoal(List<String> current, String goal) {
