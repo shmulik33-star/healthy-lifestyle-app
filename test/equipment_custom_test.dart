@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthy_lifestyle_stage9/features/equipment/equipment_item.dart';
 import 'package:healthy_lifestyle_stage9/features/equipment/equipment_workout.dart';
@@ -33,6 +35,50 @@ void main() {
     expect(restored.single.notes, 'נמצא בחדר העבודה');
     expect(restored.single.available, isTrue);
     expect(restored.single.source, 'photo');
+  });
+
+  test('equipment recovers from backup when primary data is corrupt', () async {
+    final backup = jsonEncode([
+      const CustomEquipmentItem(
+        id: 'backup-1',
+        name: 'קטלבל גיבוי',
+        category: 'קטלבל',
+        source: 'photo_ai',
+      ).toJson(),
+    ]);
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      EquipmentStore.storageKey: '{broken-json',
+      EquipmentStore.backupStorageKey: backup,
+    });
+
+    final restored = await EquipmentStore.load();
+    expect(restored, hasLength(1));
+    expect(restored.single.id, 'backup-1');
+    expect(restored.single.name, 'קטלבל גיבוי');
+    expect(restored.single.source, 'photo_ai');
+  });
+
+  test('saving changed equipment keeps previous valid payload as backup', () async {
+    const first = CustomEquipmentItem(
+      id: 'first',
+      name: 'משקולת ראשונה',
+      category: 'משקולות',
+    );
+    const second = CustomEquipmentItem(
+      id: 'second',
+      name: 'גומייה שנייה',
+      category: 'גומיות התנגדות',
+    );
+
+    await EquipmentStore.save(const [first]);
+    await EquipmentStore.save(const [second]);
+
+    final prefs = await SharedPreferences.getInstance();
+    final backupRaw = prefs.getString(EquipmentStore.backupStorageKey);
+    expect(backupRaw, isNotNull);
+    final decoded = jsonDecode(backupRaw!) as List<dynamic>;
+    expect(decoded, hasLength(1));
+    expect((decoded.single as Map)['id'], 'first');
   });
 
   test('available custom weights can add an exercise to the workout', () {
