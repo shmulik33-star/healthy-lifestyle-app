@@ -10,7 +10,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  test('custom equipment persists all editable fields', () async {
+  test('custom equipment persists all editable fields and source', () async {
     const item = CustomEquipmentItem(
       id: 'custom-1',
       name: 'מכשיר ביתי מיוחד',
@@ -19,6 +19,7 @@ void main() {
       quantity: 2,
       notes: 'נמצא בחדר העבודה',
       available: true,
+      source: 'photo',
     );
 
     await EquipmentStore.save(const [item]);
@@ -31,6 +32,7 @@ void main() {
     expect(restored.single.quantity, 2);
     expect(restored.single.notes, 'נמצא בחדר העבודה');
     expect(restored.single.available, isTrue);
+    expect(restored.single.source, 'photo');
   });
 
   test('available custom weights can add an exercise to the workout', () {
