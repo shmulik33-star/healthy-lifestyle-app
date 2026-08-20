@@ -129,6 +129,49 @@ void main() {
     expect(state.pantryItems.single.foodId, food.id);
   });
 
+  test('pantry name and category follow an edited custom food id', () {
+    final state = AppState();
+    const original = FoodItem(
+      id: 'custom_rename_sync',
+      name: 'ממרח ביתי ישן',
+      category: 'ממרחים ורטבים',
+      type: KosherFoodType.pareve,
+      caloriesPer100g: 150,
+      proteinPer100g: 6,
+      carbsPer100g: 20,
+      fatPer100g: 5,
+      units: {'מנה': 50, 'גרם': 1},
+      userCreated: true,
+    );
+    const edited = FoodItem(
+      id: 'custom_rename_sync',
+      name: 'ממרח עדשים חדש',
+      category: 'קטניות',
+      type: KosherFoodType.pareve,
+      caloriesPer100g: 155,
+      proteinPer100g: 7,
+      carbsPer100g: 21,
+      fatPer100g: 5,
+      units: {'מנה': 50, 'גרם': 1},
+      userCreated: true,
+    );
+
+    state.addCustomFood(original);
+    state.addPantryItem(
+      original.name,
+      2,
+      'מנות',
+      original.category,
+      foodId: original.id,
+    );
+    state.addCustomFood(edited);
+
+    final pantry = state.pantryItems.single;
+    expect(pantry.foodId, edited.id);
+    expect(pantry.name, edited.name);
+    expect(pantry.category, edited.category);
+  });
+
   test('egg aliases do not merge or consume egg salad as plain eggs', () {
     final state = AppState();
     state.addPantryItem(
