@@ -283,6 +283,28 @@ function isKcalUnit(value: unknown): boolean {
   ]);
 }
 
+function calorieLabelExplicitlyMeansKcal(value: unknown): boolean {
+  const label = semanticText(value);
+  if (!label) return false;
+  if (containsAny(label, ['kj', 'kilojoule', 'kilojoules', 'كيلوجول'])) return false;
+  return containsAny(label, [
+    'kcal',
+    'k cal',
+    'kilocalorie',
+    'kilocalories',
+    'calorie',
+    'calories',
+    'קלוריות',
+    'קלוריה',
+    'קקל',
+    'קק ל',
+    'سعرات حرارية',
+    'سعرات',
+    'كالوري',
+    'كيلوكالوري',
+  ]);
+}
+
 function normalizeLabel(parsed: Record<string, unknown>) {
   const basisGrams = numberValue(parsed.basisGrams, 5000);
   const rows = nutritionRows(parsed.rows);
@@ -292,9 +314,12 @@ function normalizeLabel(parsed: Record<string, unknown>) {
 
   const caloriesUnit =
     typeof parsed.caloriesUnit === 'string' ? parsed.caloriesUnit.trim() : '';
-  const directCalories = isKcalUnit(caloriesUnit)
-    ? numberValue(parsed.caloriesKcal, 10000)
-    : 0;
+  const caloriesLabel =
+    typeof parsed.caloriesLabel === 'string' ? parsed.caloriesLabel.trim() : '';
+  const directCalories =
+    isKcalUnit(caloriesUnit) || calorieLabelExplicitlyMeansKcal(caloriesLabel)
+      ? numberValue(parsed.caloriesKcal, 10000)
+      : 0;
 
   const rawProtein = proteinRow?.value ?? 0;
   const rawCarbs = carbsRow?.value ?? 0;
@@ -358,14 +383,13 @@ function normalizeLabel(parsed: Record<string, unknown>) {
     servingGrams: numberValue(parsed.servingGrams, 5000),
     confidence,
     reason: [reason, ...validationNotes].filter(Boolean).join(' '),
-    validation: 'semantic-row-macros-direct-kcal-v8',
+    validation: 'semantic-row-macros-direct-kcal-v9',
     missingFields,
     energyMismatch,
     energyDifferenceRatio,
     basisLabel: typeof parsed.basisLabel === 'string' ? parsed.basisLabel.trim() : '',
     sourceLabels: {
-      calories:
-        typeof parsed.caloriesLabel === 'string' ? parsed.caloriesLabel.trim() : '',
+      calories: caloriesLabel,
       protein: proteinRow?.label ?? '',
       carbs: carbsRow?.label ?? '',
       fat: fatRow?.label ?? '',
@@ -395,11 +419,13 @@ For protein, fat and carbohydrates, do transcription first:
 - Include all visible nutrition rows so the server can map labels deterministically.
 
 Calories/energy are handled separately in the SAME model call:
-- caloriesKcal: copy ONLY the kcal / Calories / kilocalorie number from the Energy/Calories row in the SAME chosen column.
-- caloriesUnit: copy the unit that proves this is kcal/Calories, for example kcal, Calories, קק״ל, קלוריות, سعرات حرارية.
-- caloriesLabel: copy the printed Energy/Calories row label.
+- caloriesKcal: copy the calorie value from the Energy/Calories row in the SAME chosen column.
+- If the printed row label itself explicitly contains Calories / calorie / קלוריות / קלוריה / سعرات حرارية, that is sufficient evidence that the number is calories even when no separate kcal unit is printed.
+- caloriesLabel: copy the printed Energy/Calories row label exactly enough to preserve the calorie wording.
+- caloriesUnit: copy the printed kcal/Calories unit when present. If there is no separate unit but the row label explicitly says calories, copy that calorie wording into caloriesUnit (for example קלוריות or Calories).
 - If both kJ and kcal appear, caloriesKcal MUST be the kcal value, never the kJ value.
-- If kcal is not clearly visible, set caloriesKcal=0 and caloriesUnit="". Do not convert kJ and do not calculate calories from macros.
+- A generic Energy / אנרגיה / طاقة label by itself is NOT enough to assume kcal. If only kJ is visible, or the energy unit is unclear and the label does not explicitly say calories, set caloriesKcal=0 and caloriesUnit="".
+- Do not convert kJ and do not calculate calories from macros.
 
 Other rules:
 - Use product/food name only if clearly visible; otherwise name="".
@@ -417,7 +443,7 @@ recognized, name, basisGrams, basisLabel, caloriesKcal, caloriesUnit, caloriesLa
       {
         role: 'system',
         content:
-          'Read nutrition labels faithfully. Preserve each nutrient label with the number printed on the same row. Row order is irrelevant. Read kcal separately from kJ. Do not calculate or invent values.',
+          'Read nutrition labels faithfully. Preserve each nutrient label with the number printed on the same row. Row order is irrelevant. Read calorie-labelled energy separately from kJ. Do not calculate or invent values.',
       },
       {
         role: 'user',
@@ -458,7 +484,7 @@ export async function onRequestGet(context: any) {
     status: 'ok',
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
-    pipeline: 'nutrition-label-direct-vision-v8',
+    pipeline: 'nutrition-label-direct-vision-v9-calorie-label',
   });
 }
 
@@ -518,7 +544,7 @@ export async function onRequestPost(context: any) {
     return jsonResponse({
       ...normalizeLabel(parsed),
       model: MODEL,
-      pipeline: 'direct-vision-semantic-rows-plus-kcal',
+      pipeline: 'direct-vision-semantic-rows-plus-calorie-label',
     });
   } catch (error) {
     console.error('nutrition label recognition failed', error);
