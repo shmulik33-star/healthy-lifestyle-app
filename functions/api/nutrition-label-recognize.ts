@@ -86,6 +86,7 @@ function extractModelText(result: any): string {
   if (typeof result.output_text === 'string') return result.output_text.trim();
   if (typeof result.text === 'string') return result.text.trim();
   if (typeof result.response === 'string') return result.response.trim();
+
   if (result.response && typeof result.response === 'object') {
     const nested = textFromContent(result.response.content) ||
       (typeof result.response.text === 'string' ? result.response.text.trim() : '') ||
@@ -94,12 +95,24 @@ function extractModelText(result: any): string {
         : '');
     if (nested) return nested;
   }
+
   if (Array.isArray(result.choices) && result.choices.length > 0) {
     const choice = result.choices[0];
-    const fromMessage = textFromContent(choice?.message?.content);
+    const message = choice?.message;
+    const fromMessage = textFromContent(message?.content);
     if (fromMessage) return fromMessage;
+    if (typeof message?.reasoning === 'string' && message.reasoning.trim()) {
+      return message.reasoning.trim();
+    }
+    if (
+      typeof message?.reasoning_content === 'string' &&
+      message.reasoning_content.trim()
+    ) {
+      return message.reasoning_content.trim();
+    }
     if (typeof choice?.text === 'string') return choice.text.trim();
   }
+
   if (result.result && typeof result.result === 'object') {
     const nested = result.result;
     if (typeof nested.description === 'string') return nested.description.trim();
@@ -108,10 +121,12 @@ function extractModelText(result: any): string {
     const nestedContent = textFromContent(nested.content);
     if (nestedContent) return nestedContent;
   }
+
   if (result.data && typeof result.data === 'object') {
     if (typeof result.data.description === 'string') return result.data.description.trim();
     if (typeof result.data.response === 'string') return result.data.response.trim();
   }
+
   if (typeof result.result === 'string') return result.result.trim();
   return '';
 }
@@ -175,11 +190,15 @@ async function structureDescription(ai: any, description: string) {
     messages: [
       {
         role: 'system',
-        content: 'Convert a visual description of a nutrition label into the requested structured object. Never invent values.',
+        content:
+          'Convert OCR or a visual description of a nutrition label into the requested structured object. Never invent values.',
       },
       {
         role: 'user',
-        content: `Visual description:\n${description.slice(0, 6000)}\n\nReturn only values that are explicitly supported by the description. Use Hebrew for text fields.`,
+        content:
+          `Nutrition-label OCR/description:\n${description.slice(0, 9000)}\n\n` +
+          'Prefer an explicitly visible per-100g column. If values are for a different gram basis, put that basis in basisGrams. ' +
+          'Calories must be kcal, not kJ. Use Hebrew for text fields. Return only values supported by the source.',
       },
     ],
     response_format: { type: 'json_schema', json_schema: labelSchema },
@@ -197,7 +216,8 @@ async function runVision(ai: any, dataUrl: string, prompt: string) {
     messages: [
       {
         role: 'system',
-        content: 'You carefully read food nutrition labels from images and never fabricate missing values.',
+        content:
+          'You carefully read food nutrition labels from images and never fabricate missing values.',
       },
       {
         role: 'user',
@@ -207,10 +227,56 @@ async function runVision(ai: any, dataUrl: string, prompt: string) {
         ],
       },
     ],
+    response_format: { type: 'json_object' },
+    chat_template_kwargs: { enable_thinking: false },
     max_completion_tokens: 1400,
-    reasoning_effort: 'low',
     temperature: 0.1,
   });
+}
+
+function base64ToBytes(imageBase64: string): Uint8Array {
+  const comma = imageBase64.indexOf(',');
+  const raw = comma >= 0 ? imageBase64.slice(comma + 1) : imageBase64;
+  const binary = atob(raw);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function extensionForMime(mimeType: string) {
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/webp') return 'webp';
+  return 'jpg';
+}
+
+function markdownData(result: any): string {
+  const item = Array.isArray(result) ? result[0] : result;
+  if (!item || typeof item !== 'object') return '';
+  return typeof item.data === 'string' ? item.data.trim() : '';
+}
+
+async function markdownOcrFallback(
+  ai: any,
+  imageBase64: string,
+  mimeType: string,
+): Promise<Record<string, unknown> | null> {
+  const bytes = base64ToBytes(imageBase64);
+  const converted = await ai.toMarkdown(
+    {
+      name: `nutrition-label.${extensionForMime(mimeType)}`,
+      blob: new Blob([bytes], { type: mimeType }),
+    },
+    {
+      conversionOptions: {
+        output: { format: 'text' },
+      },
+    },
+  );
+  const text = markdownData(converted);
+  if (!text) return null;
+  return structureDescription(ai, text);
 }
 
 function diagnosticShape(result: any) {
@@ -218,13 +284,16 @@ function diagnosticShape(result: any) {
   const message = choice?.message;
   return {
     responseShape: Object.keys(result ?? {}).slice(0, 12).join(','),
-    choiceShape: choice && typeof choice === 'object'
-      ? Object.keys(choice).slice(0, 12).join(',')
-      : '',
-    messageShape: message && typeof message === 'object'
-      ? Object.keys(message).slice(0, 12).join(',')
-      : '',
-    finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : '',
+    choiceShape:
+      choice && typeof choice === 'object'
+        ? Object.keys(choice).slice(0, 12).join(',')
+        : '',
+    messageShape:
+      message && typeof message === 'object'
+        ? Object.keys(message).slice(0, 12).join(',')
+        : '',
+    finishReason:
+      typeof choice?.finish_reason === 'string' ? choice.finish_reason : '',
     contentType: Array.isArray(message?.content)
       ? 'array'
       : typeof message?.content,
@@ -238,7 +307,7 @@ export async function onRequestGet(context: any) {
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
     structureModel: STRUCTURE_MODEL,
-    pipeline: 'nutrition-label-vision-v2',
+    pipeline: 'nutrition-label-vision-v3',
   });
 }
 
@@ -257,12 +326,12 @@ export async function onRequestPost(context: any) {
     return jsonResponse({ error: 'invalid_json' }, 400);
   }
 
-  const imageBase64 = typeof body?.imageBase64 === 'string'
-    ? body.imageBase64.trim()
-    : '';
-  const mimeType = typeof body?.mimeType === 'string'
-    ? body.mimeType.trim().toLowerCase()
-    : 'image/jpeg';
+  const imageBase64 =
+    typeof body?.imageBase64 === 'string' ? body.imageBase64.trim() : '';
+  const mimeType =
+    typeof body?.mimeType === 'string'
+      ? body.mimeType.trim().toLowerCase()
+      : 'image/jpeg';
 
   if (!imageBase64 || imageBase64.length > 5_500_000) {
     return jsonResponse({ error: 'invalid_image' }, 400);
@@ -300,49 +369,84 @@ Return exactly one JSON object and no surrounding prose. It must contain all of 
 recognized, name, basisGrams, calories, protein, carbs, fat, servingName, servingGrams, confidence, reason.
 `;
 
+  let result: any = null;
+  let lastDiagnostic: Record<string, unknown> = {};
+
   try {
-    let result = await runVision(ai, dataUrl, prompt);
-    let direct = directObject(result);
-    let raw = extractModelText(result);
-    let parsed = direct ?? (raw ? extractJson(raw) : null);
-    let pipeline = direct ? 'vision-direct-object' : 'vision-json-text';
-
-    if (!parsed && !raw && !direct) {
-      result = await runVision(
-        ai,
-        dataUrl,
-        `${prompt}\nThis is a retry. Focus only on the visible nutrition table and return the JSON object.`,
-      );
-      direct = directObject(result);
-      raw = extractModelText(result);
-      parsed = direct ?? (raw ? extractJson(raw) : null);
-      pipeline = direct ? 'vision-retry-direct-object' : 'vision-retry-json-text';
-    }
-
-    if (!parsed && raw) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        parsed = await structureDescription(ai, raw);
-        if (parsed) pipeline = 'vision-text-structured-fallback';
-      } catch (fallbackError) {
-        console.warn('nutrition label structured fallback failed', fallbackError);
+        result = await runVision(
+          ai,
+          dataUrl,
+          attempt === 0
+            ? prompt
+            : `${prompt}\nRetry: focus only on the visible nutrition table.`,
+        );
+        const direct = directObject(result);
+        const raw = extractModelText(result);
+        const parsed = direct ?? (raw ? extractJson(raw) : null);
+
+        if (parsed) {
+          return jsonResponse({
+            ...normalizeLabel(parsed),
+            model: MODEL,
+            structureModel: STRUCTURE_MODEL,
+            pipeline:
+              attempt === 0 ? 'vision-json-object' : 'vision-json-object-retry',
+          });
+        }
+
+        if (raw) {
+          try {
+            const structured = await structureDescription(ai, raw);
+            if (structured) {
+              return jsonResponse({
+                ...normalizeLabel(structured),
+                model: MODEL,
+                structureModel: STRUCTURE_MODEL,
+                pipeline: 'vision-text-structured-fallback',
+              });
+            }
+          } catch (structureError) {
+            console.warn('nutrition label structure fallback failed', structureError);
+          }
+        }
+
+        lastDiagnostic = diagnosticShape(result);
+      } catch (visionError) {
+        console.warn('nutrition label direct vision attempt failed', visionError);
+        lastDiagnostic = { visionAttemptFailed: true, attempt: attempt + 1 };
       }
     }
 
-    if (!parsed) {
-      if (!raw && !direct) {
-        const diagnostic = diagnosticShape(result);
-        console.warn('nutrition label recognition returned no readable output', diagnostic);
-        return jsonResponse({ error: 'empty_model_response', ...diagnostic }, 502);
+    try {
+      const parsed = await markdownOcrFallback(ai, imageBase64, mimeType);
+      if (parsed) {
+        return jsonResponse({
+          ...normalizeLabel(parsed),
+          model: MODEL,
+          structureModel: STRUCTURE_MODEL,
+          pipeline: 'cloudflare-markdown-ocr-structured',
+        });
       }
-      return jsonResponse({ error: 'invalid_model_response_after_fallback' }, 502);
+    } catch (markdownError) {
+      console.warn('nutrition label markdown OCR fallback failed', markdownError);
+      return jsonResponse(
+        {
+          error: 'ocr_fallback_failed',
+          ...lastDiagnostic,
+        },
+        502,
+      );
     }
 
-    return jsonResponse({
-      ...normalizeLabel(parsed),
-      model: MODEL,
-      structureModel: STRUCTURE_MODEL,
-      pipeline,
-    });
+    return jsonResponse(
+      {
+        error: 'empty_model_response',
+        ...lastDiagnostic,
+      },
+      502,
+    );
   } catch (error) {
     console.error('nutrition label recognition failed', error);
     return jsonResponse({ error: 'ai_request_failed' }, 502);
