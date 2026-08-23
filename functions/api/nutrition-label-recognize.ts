@@ -9,9 +9,14 @@ const labelSchema = {
     name: { type: 'string' },
     basisGrams: { type: 'number', minimum: 0, maximum: 5000 },
     calories: { type: 'number', minimum: 0, maximum: 10000 },
+    caloriesLabel: { type: 'string' },
+    caloriesUnit: { type: 'string' },
     protein: { type: 'number', minimum: 0, maximum: 5000 },
+    proteinLabel: { type: 'string' },
     carbs: { type: 'number', minimum: 0, maximum: 5000 },
+    carbsLabel: { type: 'string' },
     fat: { type: 'number', minimum: 0, maximum: 5000 },
+    fatLabel: { type: 'string' },
     servingName: { type: 'string' },
     servingGrams: { type: 'number', minimum: 0, maximum: 5000 },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
@@ -22,9 +27,14 @@ const labelSchema = {
     'name',
     'basisGrams',
     'calories',
+    'caloriesLabel',
+    'caloriesUnit',
     'protein',
+    'proteinLabel',
     'carbs',
+    'carbsLabel',
     'fat',
+    'fatLabel',
     'servingName',
     'servingGrams',
     'confidence',
@@ -157,17 +167,171 @@ function numberValue(value: unknown, max: number): number {
   return Math.max(0, Math.min(max, number));
 }
 
+function semanticText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0591-\u05c7\u064b-\u065f\u0670]/g, '')
+    .replace(/["'׳״`~!@#$%^&*()_+=\[\]{}|\\/:;,.<>?\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function containsAny(text: string, terms: string[]) {
+  return terms.some((term) => text.includes(term));
+}
+
+type NutrientKind = 'calories' | 'protein' | 'carbs' | 'fat';
+
+function nutrientLabelMatches(kind: NutrientKind, labelValue: unknown): boolean {
+  const label = semanticText(labelValue);
+  if (!label) return false;
+
+  if (kind === 'protein') {
+    return containsAny(label, [
+      'protein',
+      'proteins',
+      'חלבון',
+      'חלבונים',
+      'بروتين',
+      'البروتين',
+      'proteine',
+      'proteina',
+    ]);
+  }
+
+  if (kind === 'fat') {
+    if (
+      containsAny(label, [
+        'saturated',
+        'trans',
+        'mono unsaturated',
+        'monounsaturated',
+        'poly unsaturated',
+        'polyunsaturated',
+        'רווי',
+        'טרנס',
+        'مشبعة',
+        'متحولة',
+      ])
+    ) {
+      return false;
+    }
+    return containsAny(label, [
+      'total fat',
+      'fat',
+      'שומן',
+      'שומנים',
+      'סך השומנים',
+      'دهون',
+      'الدهون',
+      'اجمالي الدهون',
+      'مجموع الدهون',
+      'lipides',
+      'grasas',
+    ]);
+  }
+
+  if (kind === 'carbs') {
+    if (
+      containsAny(label, [
+        'sugar',
+        'sugars',
+        'fiber',
+        'fibre',
+        'starch',
+        'סוכר',
+        'סוכרים',
+        'סיבים',
+        'עמילן',
+        'سكريات',
+        'الياف',
+        'نشا',
+      ])
+    ) {
+      return false;
+    }
+    return containsAny(label, [
+      'carbohydrate',
+      'carbohydrates',
+      'total carbohydrate',
+      'carbs',
+      'פחמימות',
+      'סך הפחמימות',
+      'كربوهيدرات',
+      'الكربوهيدرات',
+      'glucides',
+      'carbohidratos',
+    ]);
+  }
+
+  return containsAny(label, [
+    'calorie',
+    'calories',
+    'kcal',
+    'energy',
+    'קלוריות',
+    'אנרגיה',
+    'سعرات',
+    'طاقة',
+    'calorias',
+    'energie',
+  ]);
+}
+
+function isKcalValue(labelValue: unknown, unitValue: unknown): boolean {
+  const combined = `${semanticText(labelValue)} ${semanticText(unitValue)}`.trim();
+  if (!combined) return false;
+  const hasKcal = containsAny(combined, [
+    'kcal',
+    'calorie',
+    'calories',
+    'קלוריות',
+    'קקל',
+    'سعر حراري',
+    'سعرات حرارية',
+    'calorias',
+  ]);
+  const onlyKilojoule = containsAny(combined, ['kj', 'kilojoule', 'קילו ג אול', 'كيلوجول']);
+  return hasKcal || !onlyKilojoule;
+}
+
 function normalizeLabel(parsed: Record<string, unknown>) {
   const basisGrams = numberValue(parsed.basisGrams, 5000);
-  const rawCalories = numberValue(parsed.calories, 10000);
-  const rawProtein = numberValue(parsed.protein, 5000);
-  const rawCarbs = numberValue(parsed.carbs, 5000);
-  const rawFat = numberValue(parsed.fat, 5000);
+
+  const labelChecks = {
+    calories:
+      nutrientLabelMatches('calories', parsed.caloriesLabel) &&
+      isKcalValue(parsed.caloriesLabel, parsed.caloriesUnit),
+    protein: nutrientLabelMatches('protein', parsed.proteinLabel),
+    carbs: nutrientLabelMatches('carbs', parsed.carbsLabel),
+    fat: nutrientLabelMatches('fat', parsed.fatLabel),
+  };
+
+  const rawCalories = labelChecks.calories ? numberValue(parsed.calories, 10000) : 0;
+  const rawProtein = labelChecks.protein ? numberValue(parsed.protein, 5000) : 0;
+  const rawCarbs = labelChecks.carbs ? numberValue(parsed.carbs, 5000) : 0;
+  const rawFat = labelChecks.fat ? numberValue(parsed.fat, 5000) : 0;
+
+  const rejectedFields = Object.entries(labelChecks)
+    .filter(([, valid]) => !valid)
+    .map(([field]) => field);
+
   const hasValues = rawCalories > 0 || rawProtein > 0 || rawCarbs > 0 || rawFat > 0;
   const recognized = parsed.recognized === true && basisGrams > 0 && hasValues;
   const factor = recognized ? 100 / basisGrams : 0;
   const per100 = (value: number, max: number) =>
     Math.max(0, Math.min(max, value * factor));
+
+  const baseConfidence = numberValue(parsed.confidence, 1);
+  const confidence = rejectedFields.length > 0
+    ? Math.min(baseConfidence, 0.6)
+    : baseConfidence;
+  const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+  const validationNote = rejectedFields.length > 0
+    ? `לא השתמשתי בערכים שלא התאימו בבירור לשם השורה: ${rejectedFields.join(', ')}.`
+    : '';
 
   return {
     recognized,
@@ -180,8 +344,16 @@ function normalizeLabel(parsed: Record<string, unknown>) {
       ? parsed.servingName.trim()
       : '',
     servingGrams: numberValue(parsed.servingGrams, 5000),
-    confidence: numberValue(parsed.confidence, 1),
-    reason: typeof parsed.reason === 'string' ? parsed.reason.trim() : '',
+    confidence,
+    reason: [reason, validationNote].filter(Boolean).join(' '),
+    validation: 'semantic-nutrient-labels-v1',
+    rejectedFields,
+    sourceLabels: {
+      calories: typeof parsed.caloriesLabel === 'string' ? parsed.caloriesLabel : '',
+      protein: typeof parsed.proteinLabel === 'string' ? parsed.proteinLabel : '',
+      carbs: typeof parsed.carbsLabel === 'string' ? parsed.carbsLabel : '',
+      fat: typeof parsed.fatLabel === 'string' ? parsed.fatLabel : '',
+    },
   };
 }
 
@@ -191,18 +363,20 @@ async function structureDescription(ai: any, description: string) {
       {
         role: 'system',
         content:
-          'Convert OCR or a visual description of a nutrition label into the requested structured object. Never invent values.',
+          'Convert OCR or a visual description of a nutrition label into a structured object. The order of rows is irrelevant. Identify each nutrient by the text label next to it. Never infer a nutrient from row position. Never invent values.',
       },
       {
         role: 'user',
         content:
           `Nutrition-label OCR/description:\n${description.slice(0, 9000)}\n\n` +
-          'Prefer an explicitly visible per-100g column. If values are for a different gram basis, put that basis in basisGrams. ' +
-          'Calories must be kcal, not kJ. Use Hebrew for text fields. Return only values supported by the source.',
+          'For calories, protein, carbs and fat, also copy the exact visible row label into caloriesLabel, proteinLabel, carbsLabel and fatLabel. ' +
+          'Copy the calories unit into caloriesUnit. Protein must only come from a protein row; fat only from a TOTAL fat row, never saturated/trans/unsaturated fat; carbs only from a carbohydrate row, never sugars/fibre/starch. ' +
+          'Prefer an explicitly visible per-100g column. If values are for a different gram basis, put that basis in basisGrams. Calories must be kcal, not kJ. ' +
+          'If a target row is absent or ambiguous, use 0 for its number and an empty string for its label instead of guessing. Use Hebrew for text fields such as name, servingName and reason.',
       },
     ],
     response_format: { type: 'json_schema', json_schema: labelSchema },
-    max_completion_tokens: 700,
+    max_completion_tokens: 900,
     temperature: 0,
   });
   const direct = directObject(result);
@@ -217,7 +391,7 @@ async function runVision(ai: any, dataUrl: string, prompt: string) {
       {
         role: 'system',
         content:
-          'You carefully read food nutrition labels from images and never fabricate missing values.',
+          'Read nutrition labels semantically. Row order is irrelevant: match every number to the nutrient name printed on the same row. Never fabricate or infer a macro from its position.',
       },
       {
         role: 'user',
@@ -229,8 +403,8 @@ async function runVision(ai: any, dataUrl: string, prompt: string) {
     ],
     response_format: { type: 'json_object' },
     chat_template_kwargs: { enable_thinking: false },
-    max_completion_tokens: 1400,
-    temperature: 0.1,
+    max_completion_tokens: 1600,
+    temperature: 0,
   });
 }
 
@@ -307,7 +481,7 @@ export async function onRequestGet(context: any) {
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
     structureModel: STRUCTURE_MODEL,
-    pipeline: 'nutrition-label-vision-v3',
+    pipeline: 'nutrition-label-vision-v4-semantic-labels',
   });
 }
 
@@ -352,21 +526,41 @@ Read the nutrition facts visible in this food-label image.
 
 Goal: propose nutrition values that the user can review before saving a food item.
 
-Rules:
+Critical semantic-mapping rule:
+- Nutrition labels can list rows in ANY order. Never use row order or position to decide what a number means.
+- First read the nutrient NAME printed on a row, then take the value from that same row and the chosen basis column.
+- Copy the exact visible row name used for each target into its corresponding *Label field so the server can verify the mapping.
+
+Target mapping:
+- protein: only a row whose label means Protein / חלבון / بروتين.
+- fat: only a row whose label means TOTAL fat / שומן כולל or סך השומנים / إجمالي الدهون. Never use saturated fat, trans fat, mono/poly-unsaturated fat or cholesterol.
+- carbs: only a row whose label means Carbohydrates / פחמימות / كربوهيدرات. Never use sugars, fibre or starch as the carbs value.
+- calories: only kcal / Calories / קלוריות / سعرات حرارية. Never use kJ as calories.
+
+Column rules:
 - Prefer the column explicitly stated per 100 grams.
-- If there is no per-100g column, you may use a per-serving column only when the serving weight in grams is clearly visible. Put that serving weight in basisGrams so the server can normalize deterministically.
-- If the visible basis is per 100 ml and no gram equivalent is shown, do not pretend it is grams.
-- calories means kcal / Calories, not kJ. If only kJ is visible, leave calories as 0 rather than converting it yourself.
-- protein, carbs and fat are grams for the same basisGrams column.
-- Use the product/food name only if it is clearly visible; otherwise return an empty name.
+- If there is no per-100g column, use a different gram-based column only when its gram basis is clearly visible and put that basis in basisGrams.
+- If both per-100g and per-serving columns are visible, use the per-100g values for calories/protein/carbs/fat.
+- All four macro values must come from the SAME basis column.
+
+Output evidence fields:
+- caloriesLabel: exact visible row label used for calories.
+- caloriesUnit: exact visible unit for the calories number, such as kcal.
+- proteinLabel: exact visible row label used for protein.
+- carbsLabel: exact visible row label used for carbohydrates.
+- fatLabel: exact visible row label used for total fat.
+- If a target row is missing or ambiguous, return 0 for the value and an empty string for its label. Do not guess.
+
+Other rules:
+- Use the product/food name only if clearly visible; otherwise return an empty name.
 - servingName and servingGrams are optional convenience fields and must be visible on the label.
-- Do not infer kosher status, meat/dairy/pareve classification, ingredients, allergens, brand or category. They are not part of this output.
+- Do not infer kosher status, meat/dairy/pareve classification, ingredients, allergens, brand or category.
 - Never invent a missing number.
 - If a readable gram-based nutrition table is not visible, return recognized=false and low confidence.
 - Use Hebrew for name, servingName and reason.
 
 Return exactly one JSON object and no surrounding prose. It must contain all of these keys:
-recognized, name, basisGrams, calories, protein, carbs, fat, servingName, servingGrams, confidence, reason.
+recognized, name, basisGrams, calories, caloriesLabel, caloriesUnit, protein, proteinLabel, carbs, carbsLabel, fat, fatLabel, servingName, servingGrams, confidence, reason.
 `;
 
   let result: any = null;
@@ -380,7 +574,7 @@ recognized, name, basisGrams, calories, protein, carbs, fat, servingName, servin
           dataUrl,
           attempt === 0
             ? prompt
-            : `${prompt}\nRetry: focus only on the visible nutrition table.`,
+            : `${prompt}\nRetry: ignore row position completely. Re-read the printed nutrient names and pair each target value only with its matching row label.`,
         );
         const direct = directObject(result);
         const raw = extractModelText(result);
