@@ -95,10 +95,20 @@ class ProfileGoalsStore {
     return options.where(next.contains).toList();
   }
 
+  static String resolvePrimaryGoal(
+    List<String> goals, {
+    required String preferred,
+  }) {
+    final clean = options.where(goals.contains).toList();
+    if (clean.contains(preferred)) return preferred;
+    return clean.isNotEmpty ? clean.first : options.first;
+  }
+
   static int suggestedCalories({
     required double weightKg,
     required String activityLevel,
     required List<String> goals,
+    String? primaryGoal,
   }) {
     final base = (weightKg * 22).round();
     final activityFactor = switch (activityLevel) {
@@ -112,7 +122,11 @@ class ProfileGoalsStore {
     final gainingMuscle = goals.contains('עלייה במסת שריר');
 
     if (losing && gainingMuscle) {
-      estimate -= 200;
+      if (primaryGoal == 'עלייה במסת שריר') {
+        estimate += 100;
+      } else {
+        estimate -= 200;
+      }
     } else if (losing) {
       estimate -= 350;
     } else if (gainingMuscle) {
