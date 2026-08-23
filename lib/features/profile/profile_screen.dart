@@ -108,7 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               leading:const Icon(Icons.cloud_sync_outlined),
               title:const Text('חשבון וסנכרון בין מכשירים'),
               subtitle:const Text(
-                'חבר חשבון כדי שהמזונות האישיים יהיו זמינים במחשב ובטלפון.',
+                'סנכרון אוטומטי של הפרופיל, הארוחות, המזווה, הקניות והמזונות האישיים.',
               ),
               trailing:const Icon(Icons.chevron_left),
               onTap:()=>Navigator.push(
