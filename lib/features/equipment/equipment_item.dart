@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../shared/storage/app_local_storage.dart';
 
 class CustomEquipmentItem {
@@ -78,6 +80,7 @@ class CustomEquipmentItem {
 
 class EquipmentStore {
   static const storageKey = 'stage12_custom_equipment_v1';
+  static const backupStorageKey = 'stage12_custom_equipment_v1_backup';
 
   static const categories = <String>[
     'משקולות',
@@ -91,26 +94,61 @@ class EquipmentStore {
     'אחר',
   ];
 
-  static Future<List<CustomEquipmentItem>> load() async {
-    final raw = await AppLocalStorage.readString(storageKey);
-    if (raw == null || raw.isEmpty) return <CustomEquipmentItem>[];
+  static List<CustomEquipmentItem> _decode(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw const FormatException('Saved equipment is not a JSON list');
+    }
+    return decoded
+        .map(
+          (entry) => CustomEquipmentItem.fromJson(
+            Map<String, dynamic>.from(entry as Map),
+          ),
+        )
+        .where((item) => item.name.trim().isNotEmpty)
+        .toList();
+  }
+
+  static bool _isValid(String raw) {
     try {
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => CustomEquipmentItem.fromJson(
-                Map<String, dynamic>.from(e as Map),
-              ))
-          .where((e) => e.name.trim().isNotEmpty)
-          .toList();
+      _decode(raw);
+      return true;
     } catch (_) {
-      return <CustomEquipmentItem>[];
+      return false;
     }
   }
 
+  static Future<List<CustomEquipmentItem>> load() async {
+    final primary = await AppLocalStorage.readString(storageKey);
+    final backup = await AppLocalStorage.readString(backupStorageKey);
+
+    if (primary != null && primary.isNotEmpty) {
+      try {
+        return _decode(primary);
+      } catch (error) {
+        debugPrint('EquipmentStore: failed to load primary data: $error');
+      }
+    }
+
+    if (backup != null && backup.isNotEmpty) {
+      try {
+        final recovered = _decode(backup);
+        debugPrint('EquipmentStore: recovered custom equipment from backup.');
+        return recovered;
+      } catch (error) {
+        debugPrint('EquipmentStore: failed to load backup data: $error');
+      }
+    }
+
+    return <CustomEquipmentItem>[];
+  }
+
   static Future<void> save(List<CustomEquipmentItem> items) async {
-    await AppLocalStorage.writeString(
-      storageKey,
-      jsonEncode(items.map((e) => e.toJson()).toList()),
-    );
+    final encoded = jsonEncode(items.map((e) => e.toJson()).toList());
+    final previous = await AppLocalStorage.readString(storageKey);
+    if (previous != null && previous != encoded && _isValid(previous)) {
+      await AppLocalStorage.writeString(backupStorageKey, previous);
+    }
+    await AppLocalStorage.writeString(storageKey, encoded);
   }
 }
