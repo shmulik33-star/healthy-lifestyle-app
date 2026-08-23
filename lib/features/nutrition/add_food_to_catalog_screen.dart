@@ -245,13 +245,21 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(
-                        _labelImageBytes!,
-                        key: const Key('nutrition_label_preview'),
-                        height: 170,
+                      child: Container(
+                        height: 220,
                         width: double.infinity,
-                        fit: BoxFit.cover,
+                        color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                        child: Image.memory(
+                          _labelImageBytes!,
+                          key: const Key('nutrition_label_preview'),
+                          fit: BoxFit.contain,
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'התמונה המלאה שנבחרה מוצגת כאן ונשלחת ל־AI ללא חיתוך.',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                   if (_scanningLabel || _aiMessage.isNotEmpty) ...[
