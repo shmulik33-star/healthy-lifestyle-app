@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../shared/storage/app_local_storage.dart';
 
 class ProfileGoalsStore {
   static const storageKey = 'profile_goals_v1';
+  static const backupStorageKey = 'profile_goals_v1_backup';
 
   static const options = <String>[
     'ירידה במשקל',
@@ -12,28 +15,71 @@ class ProfileGoalsStore {
     'שיפור הכושר',
   ];
 
-  static Future<List<String>> load({required String fallbackGoal}) async {
-    final raw = await AppLocalStorage.readString(storageKey);
-    if (raw == null || raw.isEmpty) return [fallbackGoal];
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return [fallbackGoal];
-      final goals = decoded
-          .whereType<String>()
-          .where(options.contains)
-          .toSet()
-          .toList();
-      return goals.isEmpty ? [fallbackGoal] : goals;
-    } catch (_) {
-      return [fallbackGoal];
+  static List<String> _decode(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw const FormatException('Saved profile goals are not a JSON list');
     }
+    final goals = decoded
+        .whereType<String>()
+        .where(options.contains)
+        .toSet()
+        .toList();
+    if (goals.isEmpty) {
+      throw const FormatException('Saved profile goals contain no valid goals');
+    }
+    return goals;
+  }
+
+  static bool _isValid(String raw) {
+    try {
+      _decode(raw);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<List<String>> load({required String fallbackGoal}) async {
+    final primary = await AppLocalStorage.readString(storageKey);
+    final backup = await AppLocalStorage.readString(backupStorageKey);
+
+    if (primary != null && primary.isNotEmpty) {
+      try {
+        return _decode(primary);
+      } catch (error) {
+        debugPrint('ProfileGoalsStore: failed to load primary data: $error');
+      }
+    }
+
+    if (backup != null && backup.isNotEmpty) {
+      try {
+        final recovered = _decode(backup);
+        await AppLocalStorage.writeString(storageKey, backup);
+        debugPrint('ProfileGoalsStore: recovered goals from backup.');
+        return recovered;
+      } catch (error) {
+        debugPrint('ProfileGoalsStore: failed to load backup data: $error');
+      }
+    }
+
+    return [fallbackGoal];
   }
 
   static Future<void> save(List<String> goals) async {
     final clean = goals.where(options.contains).toSet().toList();
     if (clean.isEmpty) return;
-    await AppLocalStorage.writeString(storageKey, jsonEncode(clean));
+
+    final encoded = jsonEncode(clean);
+    final previous = await AppLocalStorage.readString(storageKey);
+
+    if (previous == null || previous.isEmpty || !_isValid(previous)) {
+      await AppLocalStorage.writeString(backupStorageKey, encoded);
+    } else if (previous != encoded) {
+      await AppLocalStorage.writeString(backupStorageKey, previous);
+    }
+
+    await AppLocalStorage.writeString(storageKey, encoded);
   }
 
   static List<String> toggleGoal(List<String> current, String goal) {
