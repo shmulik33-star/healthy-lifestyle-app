@@ -194,9 +194,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 items:waits.entries
                     .map((e)=>DropdownMenuItem(value:e.key,child:Text(e.value))).toList(),
                 onChanged:(v)=>setState((){
-                  if(v==null)return;
-                  if(v>=0)waitMinutes=v;
-                  else waitMinutes=-1;
+                  if(v==null){
+                    return;
+                  }
+                  if(v>=0){
+                    waitMinutes=v;
+                  } else {
+                    waitMinutes=-1;
+                  }
                 }),
               ),
               if(waitMinutes==-1)...[
@@ -219,7 +224,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ? (int.tryParse(customWait!.text)??360)
                   : waitMinutes;
               await ProfileGoalsStore.save(goals);
-              if(!mounted)return;
+              if(!context.mounted)return;
               s.updateProfile(
                 name:name!.text.trim().isEmpty?s.firstName:name!.text.trim(),
                 weight:double.tryParse(weight!.text.replaceAll(',','.'))??s.currentWeight,
@@ -232,7 +237,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 waitMinutes:finalWait,
                 dailyStartMinutes:dayStart.hour*60+dayStart.minute,
               );
-              if(mounted)Navigator.pop(context);
+              Navigator.pop(context);
             },
             child:const Text('שמור שינויים'),
           ),

@@ -10,7 +10,11 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   bool initialized=false;
   @override void didChangeDependencies(){
     super.didChangeDependencies();
-    if(!initialized){initialized=true; Future.microtask(()=>AppStateScope.of(context).buildSmartShoppingList());}
+    if(!initialized){
+      initialized=true;
+      final state=AppStateScope.of(context);
+      Future.microtask(state.buildSmartShoppingList);
+    }
   }
   @override Widget build(BuildContext context){
     final state=AppStateScope.of(context);
@@ -74,7 +78,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         TextField(controller:unit,decoration:const InputDecoration(labelText:'יחידה (יחידות / ק״ג / חבילות...)')),
         TextField(controller:home,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'כמה יש בבית')),
         const SizedBox(height:10),
-        DropdownButtonFormField<String>(value:category,isExpanded:true,decoration:const InputDecoration(labelText:'קטגוריה'),items:categories.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:(v)=>setLocal(()=>category=v??category)),
+        DropdownButtonFormField<String>(initialValue:category,isExpanded:true,decoration:const InputDecoration(labelText:'קטגוריה'),items:categories.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:(v)=>setLocal(()=>category=v??category)),
       ])),
       actions:[
         TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('ביטול')),

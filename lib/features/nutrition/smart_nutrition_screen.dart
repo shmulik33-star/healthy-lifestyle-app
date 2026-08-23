@@ -189,7 +189,7 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
                           '${food.kosherStatus==KosherStatus.kosher?' · ${kosherLabel(food.type)}':''}'),
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
-                        value: unit,
+                        initialValue: unit,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'מידה ביתית',
