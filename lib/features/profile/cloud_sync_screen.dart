@@ -123,12 +123,18 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       });
 
   Future<void> _sync({bool showSignedInMessage = false}) async {
-    final result = await CloudSyncService.syncCustomFoods(widget.state);
+    final result = await CloudSyncService.syncAllNow(widget.state);
     if (!mounted) return;
     final prefix = showSignedInMessage ? 'התחברת בהצלחה. ' : '';
+    final stateNote = result.stateMerged
+        ? ' הנתונים האישיים מוזגו בין המכשירים.'
+        : result.stateDownloaded
+            ? ' הנתונים האישיים עודכנו מהענן.'
+            : result.stateUploaded
+                ? ' הנתונים האישיים נשמרו בענן.'
+                : ' הנתונים האישיים כבר מעודכנים.';
     _setMessage(
-      '$prefixהסנכרון הושלם: ${result.uploaded} הועלו, '
-      '${result.downloaded} הורדו, ובסך הכול ${result.total} מזונות אישיים מסונכרנים.',
+      '$prefixהסנכרון הושלם. מזונות אישיים: ${result.foods.total} מסונכרנים.$stateNote',
     );
     setState(() {});
   }
@@ -138,7 +144,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   Future<void> _signOut() => _runBusy(() async {
         await CloudSyncService.signOut();
         _setMessage(
-          'התנתקת מהחשבון. המזונות שכבר נשמרו במכשיר נשארו זמינים.',
+          'התנתקת מהחשבון. העותק המקומי של הנתונים נשאר זמין במכשיר.',
         );
         setState(() {});
       });
@@ -171,8 +177,9 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'המזונות האישיים מסתנכרנים אוטומטית כל עוד החשבון מחובר. '
-                    'אין צורך לבצע סנכרון ידני. העותק המקומי נשאר במכשיר כגיבוי ואינו נמחק.',
+                    'הסנכרון מתבצע אוטומטית כל עוד החשבון מחובר. '
+                    'הוא כולל מזונות אישיים, פרופיל והעדפות, ארוחות, מזווה ורשימת קניות. '
+                    'אין צורך לבצע סנכרון ידני, והעותק המקומי נשאר במכשיר כגיבוי.',
                   ),
                   const SizedBox(height: 8),
                   Text('במכשיר הזה: ${widget.state.customFoods.length} מזונות אישיים'),
@@ -257,8 +264,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
           ],
           const SizedBox(height: 18),
           const Text(
-            'בשלב הבא נרחיב את אותו סנכרון אוטומטי גם לפרופיל, ארוחות, מזווה ורשימת קניות. '
-            'כרגע עריכה או מחיקה של אותו מזון משני מכשירים במקביל עדיין אינה מנוהלת כקונפליקט.',
+            'אם שני מכשירים משתנים במקביל, האפליקציה שומרת את השינוי המקומי בפרופיל '
+            'וממזגת פריטים ייחודיים בארוחות, במזווה וברשימת הקניות כדי לצמצם אובדן נתונים.',
           ),
         ],
       ),
