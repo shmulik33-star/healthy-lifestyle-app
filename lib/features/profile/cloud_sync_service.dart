@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,6 +27,14 @@ class CloudSyncService {
   static User? get currentUser => _client.auth.currentUser;
   static bool get isSignedIn => currentUser != null;
 
+  static AppState? _automaticState;
+  static StreamSubscription<AuthState>? _authSubscription;
+  static Timer? _debounceTimer;
+  static Timer? _pollTimer;
+  static bool _automaticSyncRunning = false;
+  static bool _automaticSyncPending = false;
+  static String _lastObservedFoodFingerprint = '';
+
   static String? get _emailRedirectTo {
     if (!kIsWeb) return null;
     final uri = Uri.base;
@@ -48,6 +59,124 @@ class CloudSyncService {
       _client.auth.signInWithPassword(email: email, password: password);
 
   static Future<void> signOut() => _client.auth.signOut();
+
+  /// Starts background sync for the currently loaded AppState.
+  ///
+  /// Sync runs when the app starts with an existing session, after auth changes,
+  /// shortly after custom foods change locally, once per minute while the app is
+  /// open, and whenever the app is resumed. Failures stay silent and preserve the
+  /// local copy; the next automatic attempt retries.
+  static void startAutomaticSync(AppState state) {
+    if (identical(_automaticState, state)) {
+      syncAutomaticallyNow();
+      return;
+    }
+
+    stopAutomaticSync();
+    _automaticState = state;
+    _lastObservedFoodFingerprint = _foodFingerprint(state);
+    state.addListener(_handleLocalStateChanged);
+
+    _authSubscription = _client.auth.onAuthStateChange.listen((authState) {
+      if (authState.session == null) {
+        _debounceTimer?.cancel();
+        _automaticSyncPending = false;
+        return;
+      }
+      _scheduleAutomaticSync(immediate: true);
+    });
+
+    _pollTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _scheduleAutomaticSync(immediate: true),
+    );
+
+    if (isSignedIn) {
+      _scheduleAutomaticSync(immediate: true);
+    }
+  }
+
+  static void stopAutomaticSync() {
+    final state = _automaticState;
+    if (state != null) {
+      state.removeListener(_handleLocalStateChanged);
+    }
+    _automaticState = null;
+    _authSubscription?.cancel();
+    _authSubscription = null;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _automaticSyncPending = false;
+    _lastObservedFoodFingerprint = '';
+  }
+
+  /// Requests an immediate background sync without surfacing an error dialog.
+  static void syncAutomaticallyNow() {
+    _scheduleAutomaticSync(immediate: true);
+  }
+
+  static void _handleLocalStateChanged() {
+    final state = _automaticState;
+    if (state == null) return;
+    final fingerprint = _foodFingerprint(state);
+    if (fingerprint == _lastObservedFoodFingerprint) return;
+    _lastObservedFoodFingerprint = fingerprint;
+    _scheduleAutomaticSync();
+  }
+
+  static String _foodFingerprint(AppState state) {
+    final foods = state.customFoods
+        .map((food) => <String, dynamic>{
+              'id': food.id,
+              'payload': food.toJson(),
+            })
+        .toList()
+      ..sort((a, b) =>
+          (a['id'] as String).compareTo(b['id'] as String));
+    return jsonEncode(foods);
+  }
+
+  static void _scheduleAutomaticSync({bool immediate = false}) {
+    if (_automaticState == null || !isSignedIn) return;
+
+    _debounceTimer?.cancel();
+    if (immediate) {
+      unawaited(_runAutomaticSync());
+      return;
+    }
+
+    _debounceTimer = Timer(
+      const Duration(milliseconds: 900),
+      () => unawaited(_runAutomaticSync()),
+    );
+  }
+
+  static Future<void> _runAutomaticSync() async {
+    final state = _automaticState;
+    if (state == null || !isSignedIn) return;
+
+    if (_automaticSyncRunning) {
+      _automaticSyncPending = true;
+      return;
+    }
+
+    _automaticSyncRunning = true;
+    try {
+      await syncCustomFoods(state);
+      _lastObservedFoodFingerprint = _foodFingerprint(state);
+    } catch (error, stack) {
+      debugPrint('CloudSyncService: automatic sync failed: $error');
+      debugPrintStack(stackTrace: stack);
+    } finally {
+      _automaticSyncRunning = false;
+      if (_automaticSyncPending) {
+        _automaticSyncPending = false;
+        _scheduleAutomaticSync(immediate: true);
+      }
+    }
+  }
 
   /// First cloud-sync stage: safely unions user-created foods across devices.
   ///
