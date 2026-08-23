@@ -171,8 +171,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'בשלב הראשון אנחנו מסנכרנים את המזונות האישיים שהוספת למאגר. '
-                    'העותק המקומי נשאר במכשיר כגיבוי ואינו נמחק.',
+                    'המזונות האישיים מסתנכרנים אוטומטית כל עוד החשבון מחובר. '
+                    'אין צורך לבצע סנכרון ידני. העותק המקומי נשאר במכשיר כגיבוי ואינו נמחק.',
                   ),
                   const SizedBox(height: 8),
                   Text('במכשיר הזה: ${widget.state.customFoods.length} מזונות אישיים'),
@@ -220,15 +220,15 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.cloud_done_outlined),
-                title: const Text('מחובר לענן'),
+                title: const Text('מחובר לענן — סנכרון אוטומטי פעיל'),
                 subtitle: Text(user.email ?? 'חשבון מחובר'),
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton.icon(
+            OutlinedButton.icon(
               onPressed: _busy ? null : _syncNow,
-              icon: const Icon(Icons.sync),
-              label: const Text('סנכרן עכשיו'),
+              icon: const Icon(Icons.refresh),
+              label: const Text('רענן עכשיו (אופציונלי)'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -257,7 +257,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
           ],
           const SizedBox(height: 18),
           const Text(
-            'בשלב הבא נרחיב את אותו מנגנון גם לפרופיל, ארוחות, מזווה ורשימת קניות. '
+            'בשלב הבא נרחיב את אותו סנכרון אוטומטי גם לפרופיל, ארוחות, מזווה ורשימת קניות. '
             'כרגע עריכה או מחיקה של אותו מזון משני מכשירים במקביל עדיין אינה מנוהלת כקונפליקט.',
           ),
         ],
