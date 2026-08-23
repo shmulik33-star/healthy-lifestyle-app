@@ -2,6 +2,26 @@ enum KosherFoodType { meat, dairy, pareve }
 
 enum KosherStatus { kosher, notKosher, unknown }
 
+const foodCategories = <String>[
+  'בשר ועוף',
+  'דגים',
+  'ביצים',
+  'מוצרי חלב',
+  'לחמים ודגנים',
+  'קטניות',
+  'ירקות',
+  'פירות',
+  'אגוזים וזרעים',
+  'ממרחים ורטבים',
+  'חטיפים וממתקים',
+  'משקאות',
+  'מאפים ומזון מוכן',
+  'מזון קפוא',
+  'אחר',
+];
+
+bool isKnownFoodCategory(String category) => foodCategories.contains(category);
+
 String kosherLabel(KosherFoodType type) => switch (type) {
   KosherFoodType.meat => 'בשרי',
   KosherFoodType.dairy => 'חלבי',
@@ -58,30 +78,60 @@ class FoodItem {
   double fatFor(String unit, double quantity) =>
       gramsFor(unit, quantity) * fatPer100g / 100;
 
-  Map<String,dynamic> toJson()=> {
-    'id':id,'name':name,'category':category,'categoryDetail':categoryDetail,
-    'type':type.name,'kosherStatus':kosherStatus.name,
-    'caloriesPer100g':caloriesPer100g,'proteinPer100g':proteinPer100g,
-    'carbsPer100g':carbsPer100g,'fatPer100g':fatPer100g,
-    'units':units,'userCreated':userCreated,
-  };
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'category': category,
+        'categoryDetail': categoryDetail,
+        'type': type.name,
+        'kosherStatus': kosherStatus.name,
+        'caloriesPer100g': caloriesPer100g,
+        'proteinPer100g': proteinPer100g,
+        'carbsPer100g': carbsPer100g,
+        'fatPer100g': fatPer100g,
+        'units': units,
+        'userCreated': userCreated,
+      };
 
-  factory FoodItem.fromJson(Map<String,dynamic> j)=>FoodItem(
-    id:j['id']??'custom_${DateTime.now().microsecondsSinceEpoch}',
-    name:j['name']??'מזון חדש',
-    category:j['category']??'אחר',
-    categoryDetail:j['categoryDetail']??'',
-    type:KosherFoodType.values.firstWhere(
-      (e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve),
-    kosherStatus:KosherStatus.values.firstWhere(
-      (e)=>e.name==j['kosherStatus'],orElse:()=>KosherStatus.unknown),
-    caloriesPer100g:(j['caloriesPer100g']??0).toDouble(),
-    proteinPer100g:(j['proteinPer100g']??0).toDouble(),
-    carbsPer100g:(j['carbsPer100g']??0).toDouble(),
-    fatPer100g:(j['fatPer100g']??0).toDouble(),
-    units:Map<String,double>.from(
-      ((j['units'] as Map?)??{'מנה':100}).map(
-        (k,v)=>MapEntry(k.toString(),(v as num).toDouble()))),
-    userCreated:j['userCreated']==true,
-  );
+  factory FoodItem.fromJson(Map<String, dynamic> json) {
+    final rawCategory = json['category']?.toString().trim() ?? '';
+    final rawDetail = json['categoryDetail']?.toString().trim() ?? '';
+    final category = isKnownFoodCategory(rawCategory) ? rawCategory : 'אחר';
+    final categoryDetail = category == 'אחר'
+        ? (rawDetail.isNotEmpty
+            ? rawDetail
+            : rawCategory != 'אחר'
+                ? rawCategory
+                : '')
+        : rawDetail;
+
+    return FoodItem(
+      id: json['id']?.toString() ??
+          'custom_${DateTime.now().microsecondsSinceEpoch}',
+      name: json['name']?.toString() ?? 'מזון חדש',
+      category: category,
+      categoryDetail: categoryDetail,
+      type: KosherFoodType.values.firstWhere(
+        (value) => value.name == json['type'],
+        orElse: () => KosherFoodType.pareve,
+      ),
+      kosherStatus: KosherStatus.values.firstWhere(
+        (value) => value.name == json['kosherStatus'],
+        orElse: () => KosherStatus.unknown,
+      ),
+      caloriesPer100g: (json['caloriesPer100g'] ?? 0).toDouble(),
+      proteinPer100g: (json['proteinPer100g'] ?? 0).toDouble(),
+      carbsPer100g: (json['carbsPer100g'] ?? 0).toDouble(),
+      fatPer100g: (json['fatPer100g'] ?? 0).toDouble(),
+      units: Map<String, double>.from(
+        ((json['units'] as Map?) ?? {'מנה': 100}).map(
+          (key, value) => MapEntry(
+            key.toString(),
+            (value as num).toDouble(),
+          ),
+        ),
+      ),
+      userCreated: json['userCreated'] == true,
+    );
+  }
 }

@@ -11,24 +11,6 @@ class AddFoodToCatalogScreen extends StatefulWidget {
 }
 
 class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
-  static const categories=[
-    'בשר ועוף',
-    'דגים',
-    'ביצים',
-    'מוצרי חלב',
-    'לחמים ודגנים',
-    'קטניות',
-    'ירקות',
-    'פירות',
-    'אגוזים וזרעים',
-    'ממרחים ורטבים',
-    'חטיפים וממתקים',
-    'משקאות',
-    'מאפים ומזון מוכן',
-    'מזון קפוא',
-    'אחר',
-  ];
-
   final name=TextEditingController();
   final categoryDetail=TextEditingController();
   final calories=TextEditingController();
@@ -130,7 +112,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
               labelText:'קטגוריה',
               border:OutlineInputBorder(),
             ),
-            items:categories.map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
+            items:foodCategories.map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),
             onChanged:(v)=>setState(()=>category=v??'אחר'),
           ),
           if(category=='אחר')...[
