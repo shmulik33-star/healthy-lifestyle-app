@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthy_lifestyle_stage9/features/equipment/equipment_item.dart';
@@ -9,19 +11,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+    const item = CustomEquipmentItem(
+      id: 'photo-ai-1',
+      name: 'קטלבל מזוהה',
+      category: 'קטלבל',
+      source: 'photo_ai',
+    );
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      EquipmentStore.storageKey: jsonEncode([item.toJson()]),
+    });
   });
 
   testWidgets('AI-recognized equipment shows photo plus AI badge', (tester) async {
-    await EquipmentStore.save(const [
-      CustomEquipmentItem(
-        id: 'photo-ai-1',
-        name: 'קטלבל מזוהה',
-        category: 'קטלבל',
-        source: 'photo_ai',
-      ),
-    ]);
-
     final state = AppState();
     await tester.pumpWidget(
       MaterialApp(
