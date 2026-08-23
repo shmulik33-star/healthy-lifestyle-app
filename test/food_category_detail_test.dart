@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:healthy_lifestyle_stage9/shared/data/food_catalog.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/food.dart';
 
 void main() {
@@ -42,5 +43,36 @@ void main() {
 
     expect(restored.categoryDetail, isEmpty);
     expect(restored.displayCategory, 'אחר');
+  });
+
+  test('legacy non-canonical category is preserved safely as Other detail', () {
+    final restored = FoodItem.fromJson({
+      'id': 'legacy-pantry',
+      'name': 'מזון ישן מהמזווה',
+      'category': 'מזווה',
+      'type': 'pareve',
+      'kosherStatus': 'unknown',
+      'caloriesPer100g': 100,
+      'proteinPer100g': 1,
+      'carbsPer100g': 20,
+      'fatPer100g': 1,
+      'units': {'מנה': 100},
+      'userCreated': true,
+    });
+
+    expect(restored.category, 'אחר');
+    expect(restored.categoryDetail, 'מזווה');
+    expect(restored.displayCategory, 'אחר · מזווה');
+  });
+
+  test('all built-in foods use one of the canonical categories', () {
+    expect(foodCategories, hasLength(15));
+    for (final food in foodCatalog) {
+      expect(
+        foodCategories,
+        contains(food.category),
+        reason: '${food.name} uses non-canonical category ${food.category}',
+      );
+    }
   });
 }
