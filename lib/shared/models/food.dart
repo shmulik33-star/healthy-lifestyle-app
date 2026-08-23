@@ -2,6 +2,24 @@ enum KosherFoodType { meat, dairy, pareve }
 
 enum KosherStatus { kosher, notKosher, unknown }
 
+const foodCategories = <String>[
+  'בשר ועוף',
+  'דגים',
+  'ביצים',
+  'מוצרי חלב',
+  'לחמים ודגנים',
+  'קטניות',
+  'ירקות',
+  'פירות',
+  'אגוזים וזרעים',
+  'ממרחים ורטבים',
+  'חטיפים וממתקים',
+  'משקאות',
+  'מאפים ומזון מוכן',
+  'מזון קפוא',
+  'אחר',
+];
+
 String kosherLabel(KosherFoodType type) => switch (type) {
   KosherFoodType.meat => 'בשרי',
   KosherFoodType.dairy => 'חלבי',
