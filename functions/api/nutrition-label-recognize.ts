@@ -1,4 +1,3 @@
-const MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const STRUCTURE_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 
 const nutritionRowSchema = {
@@ -93,44 +92,24 @@ function textFromContent(content: unknown): string {
 function extractModelText(result: any): string {
   if (typeof result === 'string') return result.trim();
   if (!result || typeof result !== 'object') return '';
-  if (typeof result.description === 'string') return result.description.trim();
-  if (typeof result.output_text === 'string') return result.output_text.trim();
-  if (typeof result.text === 'string') return result.text.trim();
   if (typeof result.response === 'string') return result.response.trim();
-
-  if (result.response && typeof result.response === 'object') {
-    const nested =
-      textFromContent(result.response.content) ||
-      (typeof result.response.text === 'string' ? result.response.text.trim() : '') ||
-      (typeof result.response.description === 'string'
-        ? result.response.description.trim()
-        : '');
-    if (nested) return nested;
-  }
+  if (typeof result.text === 'string') return result.text.trim();
+  if (typeof result.output_text === 'string') return result.output_text.trim();
 
   if (Array.isArray(result.choices) && result.choices.length > 0) {
     const choice = result.choices[0];
-    const message = choice?.message;
-    const fromMessage = textFromContent(message?.content);
+    const fromMessage = textFromContent(choice?.message?.content);
     if (fromMessage) return fromMessage;
     if (typeof choice?.text === 'string') return choice.text.trim();
   }
 
   if (result.result && typeof result.result === 'object') {
-    const nested = result.result;
-    if (typeof nested.description === 'string') return nested.description.trim();
-    if (typeof nested.response === 'string') return nested.response.trim();
-    if (typeof nested.text === 'string') return nested.text.trim();
-    const nestedContent = textFromContent(nested.content);
-    if (nestedContent) return nestedContent;
+    if (typeof result.result.response === 'string') return result.result.response.trim();
+    if (typeof result.result.text === 'string') return result.result.text.trim();
+    const nested = textFromContent(result.result.content);
+    if (nested) return nested;
   }
 
-  if (result.data && typeof result.data === 'object') {
-    if (typeof result.data.description === 'string') return result.data.description.trim();
-    if (typeof result.data.response === 'string') return result.data.response.trim();
-  }
-
-  if (typeof result.result === 'string') return result.result.trim();
   return '';
 }
 
@@ -352,7 +331,16 @@ function kcalRow(row: NutritionRow): boolean {
 function rowScore(kind: NutrientKind, row: NutritionRow): number {
   const label = semanticText(row.label);
   let score = 1;
-  if (kind === 'fat' && containsAny(label, ['total fat', 'סך השומנים', 'שומן כולל', 'اجمالي الدهون', 'إجمالي الدهون'])) {
+  if (
+    kind === 'fat' &&
+    containsAny(label, [
+      'total fat',
+      'סך השומנים',
+      'שומן כולל',
+      'اجمالي الدهون',
+      'إجمالي الدهون',
+    ])
+  ) {
     score += 3;
   }
   if (kind === 'carbs' && containsAny(label, ['total carbohydrate', 'סך הפחמימות'])) {
@@ -363,7 +351,9 @@ function rowScore(kind: NutrientKind, row: NutritionRow): number {
   }
   if (kind === 'calories' && kcalRow(row)) score += 4;
   const unit = semanticText(row.unit);
-  if (kind !== 'calories' && containsAny(unit, ['g', 'gram', 'גרם', 'غ'])) score += 1;
+  if (kind !== 'calories' && containsAny(unit, ['g', 'gram', 'גרם', 'غ'])) {
+    score += 1;
+  }
   return score;
 }
 
@@ -429,7 +419,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
       ? `לא נמצאה שורה מזוהה בבירור עבור: ${missingFields.join(', ')}.`
       : '',
     energyMismatch
-      ? 'יש אי־התאמה גדולה בין הקלוריות לבין החלבון/פחמימות/שומן; נדרש אימות נוסף.'
+      ? 'יש אי־התאמה גדולה בין הקלוריות לבין החלבון/פחמימות/שומן; מומלץ לבדוק את התווית.'
       : '',
   ].filter(Boolean);
 
@@ -446,7 +436,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
     servingGrams: numberValue(parsed.servingGrams, 5000),
     confidence,
     reason: [reason, ...validationNotes].filter(Boolean).join(' '),
-    validation: 'semantic-nutrition-rows-v3-calorie-crosscheck',
+    validation: 'semantic-nutrition-rows-v4-ocr-first',
     missingFields,
     energyMismatch,
     energyDifferenceRatio,
@@ -465,80 +455,6 @@ function normalizeLabel(parsed: Record<string, unknown>) {
     },
     extractedRowCount: rows.length,
   };
-}
-
-function candidateScore(candidate: any): number {
-  let score = 0;
-  if (candidate?.caloriesPer100g > 0) score += 2;
-  if (candidate?.proteinPer100g > 0) score += 3;
-  if (candidate?.carbsPer100g > 0) score += 3;
-  if (candidate?.fatPer100g > 0) score += 3;
-  if (candidate?.energyMismatch === true) score -= 3;
-  score += numberValue(candidate?.confidence, 1);
-  return score;
-}
-
-function needsCrossCheck(candidate: any): boolean {
-  return (
-    !(candidate?.caloriesPer100g > 0) ||
-    !(candidate?.proteinPer100g > 0) ||
-    !(candidate?.carbsPer100g > 0) ||
-    !(candidate?.fatPer100g > 0) ||
-    candidate?.energyMismatch === true
-  );
-}
-
-async function structureDescription(ai: any, description: string) {
-  const result = await ai.run(STRUCTURE_MODEL, {
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Transcribe a nutrition table into structured rows. Preserve the semantic pairing between each printed nutrient label and the number on that SAME row. Row order is irrelevant. Never rename a row before pairing its value and never shift a value to a neighboring row.',
-      },
-      {
-        role: 'user',
-        content:
-          `Nutrition-label OCR:\n${description.slice(0, 10000)}\n\n` +
-          'Choose one nutrition-value column: prefer the column explicitly labeled per 100 g. Put its gram basis in basisGrams and copy its column header into basisLabel. ' +
-          'Then output rows as an array. For EVERY visible nutrition row in that chosen column, copy the row label as literally as possible into label, copy the number from that SAME row into value, and copy its printed unit into unit. ' +
-          'Do not convert or classify rows into protein/fat/carbs yourself. The server will do that later. ' +
-          'Energy is special: many labels print both kJ and kcal on the SAME energy row. Preserve BOTH values by emitting two row objects with the same energy label, one with the kJ value/unit and one with the kcal value/unit. Never drop the kcal value merely because kJ appears first. ' +
-          'If kcal is written as kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية or another clear kilocalorie notation, preserve that notation in unit. ' +
-          'Do not use values from a different column. If the table cannot be read reliably, set recognized=false. Use Hebrew only for name, servingName and reason; preserve nutrition row labels in their original language.',
-      },
-    ],
-    response_format: { type: 'json_schema', json_schema: labelSchema },
-    max_completion_tokens: 1700,
-    temperature: 0,
-  });
-  const direct = directObject(result);
-  if (direct) return direct;
-  const raw = extractModelText(result);
-  return raw ? extractJson(raw) : null;
-}
-
-async function runVision(ai: any, dataUrl: string, prompt: string) {
-  return ai.run(MODEL, {
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Transcribe nutrition-table rows faithfully. Keep each visible row label attached to the number printed on that same row. Do not map nutrients to app fields; the server performs that mapping.',
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ],
-      },
-    ],
-    response_format: { type: 'json_object' },
-    chat_template_kwargs: { enable_thinking: false },
-    max_completion_tokens: 2300,
-    temperature: 0,
-  });
 }
 
 function base64ToBytes(imageBase64: string): Uint8Array {
@@ -564,11 +480,7 @@ function markdownData(result: any): string {
   return typeof item.data === 'string' ? item.data.trim() : '';
 }
 
-async function markdownOcrFallback(
-  ai: any,
-  imageBase64: string,
-  mimeType: string,
-): Promise<Record<string, unknown> | null> {
+async function imageToText(ai: any, imageBase64: string, mimeType: string) {
   const bytes = base64ToBytes(imageBase64);
   const converted = await ai.toMarkdown(
     {
@@ -581,40 +493,48 @@ async function markdownOcrFallback(
       },
     },
   );
-  const text = markdownData(converted);
-  if (!text) return null;
-  return structureDescription(ai, text);
+  return markdownData(converted);
 }
 
-function diagnosticShape(result: any) {
-  const choice = Array.isArray(result?.choices) ? result.choices[0] : null;
-  const message = choice?.message;
-  return {
-    responseShape: Object.keys(result ?? {}).slice(0, 12).join(','),
-    choiceShape:
-      choice && typeof choice === 'object'
-        ? Object.keys(choice).slice(0, 12).join(',')
-        : '',
-    messageShape:
-      message && typeof message === 'object'
-        ? Object.keys(message).slice(0, 12).join(',')
-        : '',
-    finishReason:
-      typeof choice?.finish_reason === 'string' ? choice.finish_reason : '',
-    contentType: Array.isArray(message?.content)
-      ? 'array'
-      : typeof message?.content,
-    completionTokens: Number(result?.usage?.completion_tokens ?? 0),
-  };
+async function structureNutritionText(
+  ai: any,
+  description: string,
+): Promise<Record<string, unknown> | null> {
+  const result = await ai.run(STRUCTURE_MODEL, {
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Transcribe a nutrition table into structured rows. Preserve the pairing between each printed nutrient label and the number from the SAME row. Row order is irrelevant. Never shift values between neighboring rows.',
+      },
+      {
+        role: 'user',
+        content:
+          `Nutrition-label OCR:\n${description.slice(0, 10000)}\n\n` +
+          'Choose ONE nutrition-value column, preferring an explicitly labeled per-100-g column. Put its gram basis in basisGrams and its heading in basisLabel. ' +
+          'Output every nutrition row from that same column as {label,value,unit}; keep the printed label as literally as possible. Do not map rows to app fields. ' +
+          'Energy is special: if the OCR contains both kJ and kcal/Calories for the same energy row, output TWO row objects with the same energy label, one for kJ and one for kcal. Never discard kcal because kJ appears first. ' +
+          'Recognize kcal forms including kcal, kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية. ' +
+          'Do not mix per-serving and per-100-g values. If a row is unreadable, omit it rather than guessing. ' +
+          'Use Hebrew only for name, servingName and reason; preserve nutrition row labels in their original language.',
+      },
+    ],
+    response_format: { type: 'json_schema', json_schema: labelSchema },
+    max_completion_tokens: 1200,
+    temperature: 0,
+  });
+  const direct = directObject(result);
+  if (direct) return direct;
+  const raw = extractModelText(result);
+  return raw ? extractJson(raw) : null;
 }
 
 export async function onRequestGet(context: any) {
   return jsonResponse({
     status: 'ok',
     aiBinding: Boolean(context.env?.AI),
-    model: MODEL,
     structureModel: STRUCTURE_MODEL,
-    pipeline: 'nutrition-label-vision-v6-calorie-crosscheck',
+    pipeline: 'nutrition-label-ocr-v7-fast',
   });
 }
 
@@ -650,123 +570,22 @@ export async function onRequestPost(context: any) {
     return jsonResponse({ error: 'ai_binding_missing' }, 503);
   }
 
-  const dataUrl = imageBase64.startsWith('data:')
-    ? imageBase64
-    : `data:${mimeType};base64,${imageBase64}`;
-
-  const prompt = `
-Read the nutrition table visible in this food-label image.
-
-IMPORTANT: nutrition rows may appear in ANY order. Do not decide what a number means from its vertical position.
-
-Your task is transcription first, not app-field mapping:
-1. Choose ONE nutrition-value column. Prefer a column explicitly labeled per 100 g / 100 grams.
-2. Set basisGrams to that column's gram basis and copy the visible column heading into basisLabel.
-3. For EVERY visible nutrition row in that chosen column, emit one item in rows with:
-   - label: copy the printed nutrient name as literally as possible.
-   - value: copy the number printed on that SAME row in the chosen column.
-   - unit: copy the unit printed for that value.
-4. Never shift a value up/down to a neighboring row. Never rename a row before copying its value.
-5. Do NOT decide which row is protein, fat, carbs or calories. The server will map row names deterministically after extraction.
-6. Energy is special: labels often print BOTH kJ and kcal on the same Energy/אנרגיה/طاقة row. If both are visible, emit TWO row items with the same label: one for the kJ value and one for the kcal/Calories value. Do not discard kcal if kJ is also present.
-7. Preserve the energy unit exactly enough to distinguish kJ from kcal/Calories, including forms such as kcal, kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية.
-8. Do not mix values from per-serving and per-100g columns.
-9. If a row or number is not readable, omit that row rather than guessing.
-
-Other rules:
-- Use product/food name only if clearly visible; otherwise name="".
-- servingName and servingGrams are optional and must be visible.
-- Do not infer kosher status, meat/dairy/pareve, ingredients, allergens, brand or category.
-- If a readable gram-based nutrition table is not visible, recognized=false and confidence low.
-- Use Hebrew for name, servingName and reason, but preserve nutrition row labels in their original printed language.
-
-Return exactly one JSON object with these keys:
-recognized, name, basisGrams, basisLabel, rows, servingName, servingGrams, confidence, reason.
-`;
-
-  let result: any = null;
-  let lastDiagnostic: Record<string, unknown> = {};
-  let bestCandidate: any = null;
-  let bestPipeline = '';
-
   try {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        result = await runVision(
-          ai,
-          dataUrl,
-          attempt === 0
-            ? prompt
-            : `${prompt}\nRetry: transcribe the table row-by-row. Keep each exact printed label paired with the value horizontally aligned with that label in the selected column. Pay special attention to the Energy row and preserve the kcal value separately from kJ.`,
-        );
-        const direct = directObject(result);
-        const raw = extractModelText(result);
-        const parsed = direct ?? (raw ? extractJson(raw) : null);
-
-        if (parsed) {
-          const normalized = normalizeLabel(parsed);
-          const pipeline =
-            attempt === 0 ? 'vision-row-first' : 'vision-row-first-retry';
-          if (!bestCandidate || candidateScore(normalized) > candidateScore(bestCandidate)) {
-            bestCandidate = normalized;
-            bestPipeline = pipeline;
-          }
-          if (!needsCrossCheck(normalized)) {
-            return jsonResponse({
-              ...normalized,
-              model: MODEL,
-              structureModel: STRUCTURE_MODEL,
-              pipeline,
-            });
-          }
-        }
-
-        lastDiagnostic = diagnosticShape(result);
-      } catch (visionError) {
-        console.warn('nutrition label direct vision attempt failed', visionError);
-        lastDiagnostic = { visionAttemptFailed: true, attempt: attempt + 1 };
-      }
+    const text = await imageToText(ai, imageBase64, mimeType);
+    if (!text) {
+      return jsonResponse({ error: 'empty_ocr_response' }, 502);
     }
 
-    try {
-      const parsed = await markdownOcrFallback(ai, imageBase64, mimeType);
-      if (parsed) {
-        const normalized = normalizeLabel(parsed);
-        const pipeline = 'cloudflare-markdown-ocr-row-first';
-        if (!bestCandidate || candidateScore(normalized) > candidateScore(bestCandidate)) {
-          bestCandidate = normalized;
-          bestPipeline = pipeline;
-        }
-      }
-    } catch (markdownError) {
-      console.warn('nutrition label markdown OCR fallback failed', markdownError);
-      if (!bestCandidate) {
-        return jsonResponse(
-          {
-            error: 'ocr_fallback_failed',
-            ...lastDiagnostic,
-          },
-          502,
-        );
-      }
+    const parsed = await structureNutritionText(ai, text);
+    if (!parsed) {
+      return jsonResponse({ error: 'empty_structure_response' }, 502);
     }
 
-    if (bestCandidate) {
-      return jsonResponse({
-        ...bestCandidate,
-        model: MODEL,
-        structureModel: STRUCTURE_MODEL,
-        pipeline: bestPipeline,
-      });
-    }
-
-    return jsonResponse(
-      {
-        error: 'empty_model_response',
-        ...lastDiagnostic,
-      },
-      502,
-    );
+    return jsonResponse({
+      ...normalizeLabel(parsed),
+      structureModel: STRUCTURE_MODEL,
+      pipeline: 'cloudflare-markdown-ocr-structured-fast',
+    });
   } catch (error) {
     console.error('nutrition label recognition failed', error);
     return jsonResponse({ error: 'ai_request_failed' }, 502);
