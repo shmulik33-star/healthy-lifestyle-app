@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthy_lifestyle_stage9/features/equipment/equipment_ai_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   test('known equipment category is accepted', () {
@@ -44,5 +49,42 @@ void main() {
 
     expect(suggestion.recognized, isFalse);
     expect(suggestion.confidence, 0);
+  });
+
+  test('empty model response is retried once automatically', () async {
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      if (calls == 1) {
+        return http.Response(
+          jsonEncode({'error': 'empty_model_response'}),
+          502,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'recognized': true,
+          'name': 'קטלבל',
+          'category': 'קטלבל',
+          'categoryDetail': '',
+          'notes': '',
+          'confidence': 0.88,
+          'reason': 'נראה קטלבל בתמונה',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+
+    final result = await EquipmentAiService.recognize(
+      imageBytes: Uint8List.fromList([1, 2, 3]),
+      mimeType: 'image/jpeg',
+      client: client,
+    );
+
+    expect(calls, 2);
+    expect(result.recognized, isTrue);
+    expect(result.name, 'קטלבל');
   });
 }
