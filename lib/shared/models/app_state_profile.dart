@@ -84,9 +84,8 @@ void _profileAddWeight(AppState state, double value) {
 
 /// Stable bridge used by the cloud-sync service.
 ///
-/// The cloud intentionally contains only cross-device user data at this stage.
-/// Daily counters and generated plans stay local until their conflict rules are
-/// defined separately.
+/// The cloud intentionally contains cross-device personal data. Daily counters
+/// still stay local until their own conflict rules are defined.
 extension AppStateCloudSyncBridge on AppState {
   Map<String, dynamic> exportCloudSyncState() => {
         'version': 1,
@@ -112,6 +111,7 @@ extension AppStateCloudSyncBridge on AppState {
           'eatingStyle': eatingStyle,
           'equipment': Map<String, bool>.from(equipment),
         },
+        'weights': weights.map((entry) => entry.toJson()).toList(),
         'meals': meals.map((entry) => entry.toJson()).toList(),
         'pantryItems': pantryItems.map((item) => item.toJson()).toList(),
         'shoppingItems': shoppingItems.map((item) => item.toJson()).toList(),
@@ -155,12 +155,19 @@ extension AppStateCloudSyncBridge on AppState {
       eatingStyle = profile['eatingStyle'] as String? ?? eatingStyle;
       final equipmentRaw = profile['equipment'];
       if (equipmentRaw is Map) {
-        equipment
-          ..clear()
-          ..addAll(Map<String, dynamic>.from(equipmentRaw)
-              .map((key, value) => MapEntry(key, value == true)));
+        equipment.addAll(Map<String, dynamic>.from(equipmentRaw)
+            .map((key, value) => MapEntry(key, value == true)));
       }
       dailyStateKey = dayKeyAt(DateTime.now());
+    }
+
+    final weightsRaw = data['weights'];
+    if (weightsRaw is List) {
+      weights
+        ..clear()
+        ..addAll(weightsRaw.whereType<Map>().map(
+              (item) => WeightEntry.fromJson(Map<String, dynamic>.from(item)),
+            ));
     }
 
     final mealsRaw = data['meals'];
@@ -200,7 +207,7 @@ extension AppStateCloudSyncBridge on AppState {
     shoppingInitialized =
         data['shoppingInitialized'] as bool? ?? shoppingInitialized;
 
-    notifyListeners();
+    generateWeeklyPlan(save: false);
     await _save();
   }
 }
