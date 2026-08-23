@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import '../data/food_catalog.dart';
 import '../storage/app_local_storage.dart';
@@ -336,7 +335,7 @@ class AppState extends ChangeNotifier {
     weights..clear()..addAll(((j['weights'] as List?)??[]).map((e)=>WeightEntry.fromJson(Map<String,dynamic>.from(e))));
     if (j['equipment'] is Map) { for (final e in Map<String,dynamic>.from(j['equipment']).entries) { equipment[e.key]=e.value==true; } }
     weeklyPlan..clear()..addAll(((j['weeklyPlan'] as List?)??[]).map((e)=>PlannedDay.fromJson(Map<String,dynamic>.from(e))));
-    shoppingChecked..clear();
+    shoppingChecked.clear();
     if (j['shoppingChecked'] is Map) { for (final e in Map<String,dynamic>.from(j['shoppingChecked']).entries) { shoppingChecked[e.key]=e.value==true; } }
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
     shoppingInitialized=j['shoppingInitialized']==true;
