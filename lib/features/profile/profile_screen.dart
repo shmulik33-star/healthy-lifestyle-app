@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../shared/models/app_state.dart';
+import 'cloud_sync_screen.dart';
 import 'profile_goals_store.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -102,6 +103,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body:ListView(
         padding:const EdgeInsets.all(16),
         children:[
+          Card(
+            child:ListTile(
+              leading:const Icon(Icons.cloud_sync_outlined),
+              title:const Text('חשבון וסנכרון בין מכשירים'),
+              subtitle:const Text(
+                'חבר חשבון כדי שהמזונות האישיים יהיו זמינים במחשב ובטלפון.',
+              ),
+              trailing:const Icon(Icons.chevron_left),
+              onTap:()=>Navigator.push(
+                context,
+                MaterialPageRoute(builder:(_)=>CloudSyncScreen(state:s)),
+              ),
+            ),
+          ),
+          const SizedBox(height:12),
           _f(name!,'שם פרטי'),
           Row(children:[
             Expanded(child:_f(weight!,'משקל נוכחי (ק״ג)',number:true)),
