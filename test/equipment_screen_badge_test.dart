@@ -34,7 +34,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('קטלבל מזוהה'), findsOneWidget);
+    final equipmentName = find.text('קטלבל מזוהה');
+    await tester.scrollUntilVisible(
+      equipmentName,
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(equipmentName, findsOneWidget);
     expect(find.text('צילום + AI'), findsOneWidget);
   });
 }
