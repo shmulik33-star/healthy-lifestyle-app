@@ -5,6 +5,7 @@ import '../features/coach/coach_screen.dart';
 import '../features/fitness/fitness_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/nutrition/nutrition_screen.dart';
+import '../features/profile/cloud_sync_service.dart';
 import '../features/progress/progress_screen.dart';
 import '../shared/models/app_state.dart';
 
@@ -27,6 +28,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     AppState.load().then((loaded) {
       if (!mounted) return;
       loaded.ensureCurrentDay();
+      CloudSyncService.startAutomaticSync(loaded);
       setState(() => state = loaded);
       _dayBoundaryTimer=Timer.periodic(
         const Duration(minutes:1),
@@ -39,12 +41,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
     if(lifecycleState==AppLifecycleState.resumed){
       state?.ensureCurrentDay();
+      CloudSyncService.syncAutomaticallyNow();
     }
   }
 
   @override
   void dispose() {
     _dayBoundaryTimer?.cancel();
+    CloudSyncService.stopAutomaticSync();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
