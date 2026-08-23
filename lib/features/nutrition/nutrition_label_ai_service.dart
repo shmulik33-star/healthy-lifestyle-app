@@ -104,7 +104,7 @@ class NutritionLabelAiService {
               'mimeType': mimeType,
             }),
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 90));
     } catch (_) {
       throw const NutritionLabelAiException(
         'לא הצלחתי להגיע לשירות פענוח התווית. אפשר לנסות שוב או להזין ידנית.',
