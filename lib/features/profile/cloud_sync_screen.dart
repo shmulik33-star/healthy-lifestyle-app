@@ -127,7 +127,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     if (!mounted) return;
     final prefix = showSignedInMessage ? 'התחברת בהצלחה. ' : '';
     _setMessage(
-      '${prefix}הסנכרון הושלם: ${result.uploaded} הועלו, '
+      '$prefixהסנכרון הושלם: ${result.uploaded} הועלו, '
       '${result.downloaded} הורדו, ובסך הכול ${result.total} מזונות אישיים מסונכרנים.',
     );
     setState(() {});
