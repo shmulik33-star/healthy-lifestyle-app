@@ -68,6 +68,24 @@ void main() {
     expect(result,isNot(contains('שמירה על המשקל')));
   });
 
+  test('explicit primary goal is kept while it remains selected', () {
+    const goals=['ירידה במשקל','עלייה במסת שריר','שיפור הכושר'];
+    final primary=ProfileGoalsStore.resolvePrimaryGoal(
+      goals,
+      preferred:'שיפור הכושר',
+    );
+    expect(primary,'שיפור הכושר');
+  });
+
+  test('primary goal falls back safely after it is deselected', () {
+    const goals=['ירידה במשקל','שיפור הכושר'];
+    final primary=ProfileGoalsStore.resolvePrimaryGoal(
+      goals,
+      preferred:'עלייה במסת שריר',
+    );
+    expect(primary,'ירידה במשקל');
+  });
+
   test('weight loss plus muscle gain uses a mild deficit and high protein', () {
     const goals=['ירידה במשקל','עלייה במסת שריר'];
     final calories=ProfileGoalsStore.suggestedCalories(
@@ -81,5 +99,16 @@ void main() {
     );
     expect(calories,2330);
     expect(protein,180);
+  });
+
+  test('muscle-gain priority changes a conflicting calorie suggestion', () {
+    const goals=['ירידה במשקל','עלייה במסת שריר'];
+    final calories=ProfileGoalsStore.suggestedCalories(
+      weightKg:100,
+      activityLevel:'נמוכה',
+      goals:goals,
+      primaryGoal:'עלייה במסת שריר',
+    );
+    expect(calories,2630);
   });
 }

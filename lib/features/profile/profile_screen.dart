@@ -11,7 +11,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   TextEditingController? name,weight,target,calories,protein,customWait;
   List<String> goals=[];
-  String? activity,style;
+  String? primaryGoal,activity,style;
   int? workoutDays;
   bool keepKosher=true;
   bool separateMeatDairy=true;
@@ -32,6 +32,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     protein=TextEditingController(text:'${s.proteinTarget}');
     customWait=TextEditingController(text:'${s.meatWaitMinutes}');
     goals=[s.primaryGoal];
+    primaryGoal=s.primaryGoal;
     activity=s.activityLevel; style=s.eatingStyle;
     workoutDays=s.workoutDaysPerWeek;
     keepKosher=s.kosherEnabled;
@@ -47,7 +48,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadGoals(String fallbackGoal) async {
     final saved=await ProfileGoalsStore.load(fallbackGoal:fallbackGoal);
     if(!mounted)return;
-    setState(()=>goals=saved);
+    setState((){
+      goals=saved;
+      primaryGoal=ProfileGoalsStore.resolvePrimaryGoal(
+        saved,
+        preferred:primaryGoal??fallbackGoal,
+      );
+    });
   }
 
   Future<void> _pickDayStart() async {
@@ -85,6 +92,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       -1:'זמן מותאם אישית',
     };
     final selectedWait=waits.containsKey(waitMinutes)?waitMinutes:-1;
+    final selectedPrimary=ProfileGoalsStore.resolvePrimaryGoal(
+      goals,
+      preferred:primaryGoal??s.primaryGoal,
+    );
 
     return Scaffold(
       appBar:AppBar(title:const Text('הפרופיל והיעדים שלי')),
@@ -107,8 +118,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children:ProfileGoalsStore.options.map((goal)=>FilterChip(
               label:Text(goal),
               selected:goals.contains(goal),
-              onSelected:(_)=>setState(()=>goals=ProfileGoalsStore.toggleGoal(goals,goal)),
+              onSelected:(_)=>setState((){
+                goals=ProfileGoalsStore.toggleGoal(goals,goal);
+                primaryGoal=ProfileGoalsStore.resolvePrimaryGoal(
+                  goals,
+                  preferred:primaryGoal??goal,
+                );
+              }),
             )).toList(),
+          ),
+          const SizedBox(height:12),
+          DropdownButtonFormField<String>(
+            key:ValueKey('primary_goal_${selectedPrimary}_${goals.join('_')}'),
+            initialValue:selectedPrimary,
+            decoration:const InputDecoration(
+              labelText:'מטרה ראשית',
+              helperText:'כשיש כמה מטרות, זו המטרה שמקבלת עדיפות בהחלטות ובהמלצות.',
+              border:OutlineInputBorder(),
+            ),
+            items:goals
+                .map((v)=>DropdownMenuItem(value:v,child:Text(v)))
+                .toList(),
+            onChanged:(v){
+              if(v!=null)setState(()=>primaryGoal=v);
+            },
           ),
           const SizedBox(height:12),
           DropdownButtonFormField<String>(
@@ -146,6 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 weightKg:profileWeight,
                 activityLevel:activity??s.activityLevel,
                 goals:goals,
+                primaryGoal:selectedPrimary,
               )}';
               protein!.text='${ProfileGoalsStore.suggestedProtein(
                 weightKg:profileWeight,
@@ -223,6 +257,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final finalWait=waitMinutes==-1
                   ? (int.tryParse(customWait!.text)??360)
                   : waitMinutes;
+              final finalPrimary=ProfileGoalsStore.resolvePrimaryGoal(
+                goals,
+                preferred:primaryGoal??s.primaryGoal,
+              );
               await ProfileGoalsStore.save(goals);
               if(!context.mounted)return;
               s.updateProfile(
@@ -231,7 +269,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 target:double.tryParse(target!.text.replaceAll(',','.'))??s.targetWeight,
                 calories:int.tryParse(calories!.text)??s.calorieTarget,
                 protein:int.tryParse(protein!.text)??s.proteinTarget,
-                goal:goals.first,activity:activity,workoutDays:workoutDays,style:style,
+                goal:finalPrimary,activity:activity,workoutDays:workoutDays,style:style,
                 keepKosher:keepKosher,
                 separateMeatDairy:keepKosher&&separateMeatDairy,
                 waitMinutes:finalWait,
