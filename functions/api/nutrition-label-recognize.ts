@@ -292,11 +292,18 @@ function nutrientLabelMatches(kind: NutrientKind, labelValue: unknown): boolean 
     'calorie',
     'calories',
     'kcal',
+    'kilocalorie',
+    'kilocalories',
     'energy',
     'קלוריות',
+    'קלוריה',
     'אנרגיה',
+    'קקל',
+    'קק ל',
     'سعرات',
     'طاقة',
+    'كالوري',
+    'كيلوكالوري',
     'calorias',
     'energie',
   ]);
@@ -306,10 +313,39 @@ function kcalRow(row: NutritionRow): boolean {
   if (!nutrientLabelMatches('calories', row.label)) return false;
   const label = semanticText(row.label);
   const unit = semanticText(row.unit);
-  if (containsAny(unit, ['kj', 'kilojoule', 'كيلوجول'])) return false;
+  if (containsAny(unit, ['kj', 'kilojoule', 'kilojoules', 'كيلوجول'])) return false;
   return (
-    containsAny(unit, ['kcal', 'calorie', 'calories', 'קקל', 'سعر حراري']) ||
-    containsAny(label, ['kcal', 'calorie', 'calories', 'קלוריות', 'سعرات'])
+    containsAny(unit, [
+      'kcal',
+      'k cal',
+      'kilocalorie',
+      'kilocalories',
+      'calorie',
+      'calories',
+      'קקל',
+      'קק ל',
+      'קלוריות',
+      'קלוריה',
+      'سعر حراري',
+      'سعرات حرارية',
+      'كالوري',
+      'كيلوكالوري',
+    ]) ||
+    containsAny(label, [
+      'kcal',
+      'k cal',
+      'kilocalorie',
+      'kilocalories',
+      'calorie',
+      'calories',
+      'קלוריות',
+      'קלוריה',
+      'קקל',
+      'קק ל',
+      'سعرات',
+      'كالوري',
+      'كيلوكالوري',
+    ])
   );
 }
 
@@ -410,7 +446,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
     servingGrams: numberValue(parsed.servingGrams, 5000),
     confidence,
     reason: [reason, ...validationNotes].filter(Boolean).join(' '),
-    validation: 'semantic-nutrition-rows-v2',
+    validation: 'semantic-nutrition-rows-v3-calorie-crosscheck',
     missingFields,
     energyMismatch,
     energyDifferenceRatio,
@@ -444,6 +480,7 @@ function candidateScore(candidate: any): number {
 
 function needsCrossCheck(candidate: any): boolean {
   return (
+    !(candidate?.caloriesPer100g > 0) ||
     !(candidate?.proteinPer100g > 0) ||
     !(candidate?.carbsPer100g > 0) ||
     !(candidate?.fatPer100g > 0) ||
@@ -466,12 +503,13 @@ async function structureDescription(ai: any, description: string) {
           'Choose one nutrition-value column: prefer the column explicitly labeled per 100 g. Put its gram basis in basisGrams and copy its column header into basisLabel. ' +
           'Then output rows as an array. For EVERY visible nutrition row in that chosen column, copy the row label as literally as possible into label, copy the number from that SAME row into value, and copy its printed unit into unit. ' +
           'Do not convert or classify rows into protein/fat/carbs yourself. The server will do that later. ' +
-          'If one Energy row contains both kJ and kcal, emit two row objects with the same label, one for each value/unit. ' +
+          'Energy is special: many labels print both kJ and kcal on the SAME energy row. Preserve BOTH values by emitting two row objects with the same energy label, one with the kJ value/unit and one with the kcal value/unit. Never drop the kcal value merely because kJ appears first. ' +
+          'If kcal is written as kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية or another clear kilocalorie notation, preserve that notation in unit. ' +
           'Do not use values from a different column. If the table cannot be read reliably, set recognized=false. Use Hebrew only for name, servingName and reason; preserve nutrition row labels in their original language.',
       },
     ],
     response_format: { type: 'json_schema', json_schema: labelSchema },
-    max_completion_tokens: 1600,
+    max_completion_tokens: 1700,
     temperature: 0,
   });
   const direct = directObject(result);
@@ -498,7 +536,7 @@ async function runVision(ai: any, dataUrl: string, prompt: string) {
     ],
     response_format: { type: 'json_object' },
     chat_template_kwargs: { enable_thinking: false },
-    max_completion_tokens: 2200,
+    max_completion_tokens: 2300,
     temperature: 0,
   });
 }
@@ -576,7 +614,7 @@ export async function onRequestGet(context: any) {
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
     structureModel: STRUCTURE_MODEL,
-    pipeline: 'nutrition-label-vision-v5-row-first',
+    pipeline: 'nutrition-label-vision-v6-calorie-crosscheck',
   });
 }
 
@@ -630,9 +668,10 @@ Your task is transcription first, not app-field mapping:
    - unit: copy the unit printed for that value.
 4. Never shift a value up/down to a neighboring row. Never rename a row before copying its value.
 5. Do NOT decide which row is protein, fat, carbs or calories. The server will map row names deterministically after extraction.
-6. If an Energy row contains both kJ and kcal, emit two row items with the same label, one for each number/unit.
-7. Do not mix values from per-serving and per-100g columns.
-8. If a row or number is not readable, omit that row rather than guessing.
+6. Energy is special: labels often print BOTH kJ and kcal on the same Energy/אנרגיה/طاقة row. If both are visible, emit TWO row items with the same label: one for the kJ value and one for the kcal/Calories value. Do not discard kcal if kJ is also present.
+7. Preserve the energy unit exactly enough to distinguish kJ from kcal/Calories, including forms such as kcal, kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية.
+8. Do not mix values from per-serving and per-100g columns.
+9. If a row or number is not readable, omit that row rather than guessing.
 
 Other rules:
 - Use product/food name only if clearly visible; otherwise name="".
@@ -658,7 +697,7 @@ recognized, name, basisGrams, basisLabel, rows, servingName, servingGrams, confi
           dataUrl,
           attempt === 0
             ? prompt
-            : `${prompt}\nRetry: transcribe the table row-by-row. Keep each exact printed label paired with the value horizontally aligned with that label in the selected column.`,
+            : `${prompt}\nRetry: transcribe the table row-by-row. Keep each exact printed label paired with the value horizontally aligned with that label in the selected column. Pay special attention to the Energy row and preserve the kcal value separately from kJ.`,
         );
         const direct = directObject(result);
         const raw = extractModelText(result);
