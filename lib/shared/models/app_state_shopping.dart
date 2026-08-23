@@ -12,7 +12,14 @@ Map<String, int> _shoppingTotalsFor(AppState state) {
   return totals;
 }
 
-String _shoppingCategoryFor(String name) {
+String _shoppingCategoryFor(AppState state, String name) {
+  for (final food in state.allFoods) {
+    if (AppState._sameFoodName(food.name, name) &&
+        isKnownFoodCategory(food.category)) {
+      return food.category;
+    }
+  }
+
   if (name.contains('ביצה')) return 'ביצים';
   if (name.contains('עוף') ||
       name.contains('פרגית') ||
@@ -29,18 +36,43 @@ String _shoppingCategoryFor(String name) {
       name.contains('גבינ')) {
     return 'מוצרי חלב';
   }
-  if (name.contains('ירק') ||
-      name.contains('תפוח') ||
-      name.contains('פרי') ||
-      name.contains('אבוקדו')) {
-    return 'ירקות ופירות';
+  if (name.contains('עגבנ') ||
+      name.contains('מלפפון') ||
+      name.contains('פלפל') ||
+      name.contains('גזר') ||
+      name.contains('ירק') ||
+      name.contains('סלט')) {
+    return 'ירקות';
+  }
+  if (name.contains('תפוח') ||
+      name.contains('בננ') ||
+      name.contains('תפוז') ||
+      name.contains('אבוקדו') ||
+      name.contains('פרי')) {
+    return 'פירות';
   }
   if (name.contains('לחם') ||
+      name.contains('אורז') ||
       name.contains('קינואה') ||
-      name.contains('עדשים') ||
-      name.contains('טחינה') ||
-      name.contains('שקדים')) {
-    return 'מזווה';
+      name.contains('פריכ')) {
+    return 'לחמים ודגנים';
+  }
+  if (name.contains('עדשים') ||
+      name.contains('טופו') ||
+      name.contains('קטני')) {
+    return 'קטניות';
+  }
+  if (name.contains('שקדים') ||
+      name.contains('אגוז') ||
+      name.contains('זרע')) {
+    return 'אגוזים וזרעים';
+  }
+  if (name.contains('טחינה') ||
+      name.contains('חומוס') ||
+      name.contains('שמן') ||
+      name.contains('רוטב') ||
+      name.contains('ממרח')) {
+    return 'ממרחים ורטבים';
   }
   return 'אחר';
 }
@@ -121,7 +153,7 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
         name: name,
         quantity: buy,
         unit: isEggs ? 'יחידות' : 'יחידות/מנות',
-        category: _shoppingCategoryFor(name),
+        category: _shoppingCategoryFor(state, name),
         source: 'חכם',
         reason: reasonParts.join(' · '),
         checked: oldChecked[name] ?? false,
