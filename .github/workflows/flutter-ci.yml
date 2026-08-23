@@ -58,20 +58,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          endpoint="https://preview.healthy-lifestyle-app.pages.dev/api/equipment-recognize"
-          response=""
-          for attempt in {1..12}; do
-            response="$(curl --silent --show-error --fail "$endpoint" || true)"
-            if echo "$response" | grep -q '"status":"ok"' && \
-               echo "$response" | grep -q '"aiBinding":true'; then
-              echo "Preview runtime smoke test passed."
-              exit 0
-            fi
-            echo "Preview endpoint not ready yet (attempt $attempt/12)."
-            sleep 5
-          done
-          echo "Preview runtime smoke test failed. Last response: $response"
-          exit 1
+          check_endpoint() {
+            local endpoint="$1"
+            local label="$2"
+            local response=""
+            for attempt in {1..12}; do
+              response="$(curl --silent --show-error --fail "$endpoint" || true)"
+              if echo "$response" | grep -q '"status":"ok"' && \
+                 echo "$response" | grep -q '"aiBinding":true'; then
+                echo "$label runtime smoke test passed."
+                return 0
+              fi
+              echo "$label endpoint not ready yet (attempt $attempt/12)."
+              sleep 5
+            done
+            echo "$label runtime smoke test failed. Last response: $response"
+            return 1
+          }
+          check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/equipment-recognize" "Equipment preview"
+          check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/nutrition-label-recognize" "Nutrition-label preview"
 
       - name: Set main as Cloudflare production branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -99,17 +104,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          endpoint="https://healthy-lifestyle-app.pages.dev/api/equipment-recognize"
-          response=""
-          for attempt in {1..12}; do
-            response="$(curl --silent --show-error --fail "$endpoint" || true)"
-            if echo "$response" | grep -q '"status":"ok"' && \
-               echo "$response" | grep -q '"aiBinding":true'; then
-              echo "Production runtime smoke test passed."
-              exit 0
-            fi
-            echo "Production endpoint not ready yet (attempt $attempt/12)."
-            sleep 5
-          done
-          echo "Production runtime smoke test failed. Last response: $response"
-          exit 1
+          check_endpoint() {
+            local endpoint="$1"
+            local label="$2"
+            local response=""
+            for attempt in {1..12}; do
+              response="$(curl --silent --show-error --fail "$endpoint" || true)"
+              if echo "$response" | grep -q '"status":"ok"' && \
+                 echo "$response" | grep -q '"aiBinding":true'; then
+                echo "$label runtime smoke test passed."
+                return 0
+              fi
+              echo "$label endpoint not ready yet (attempt $attempt/12)."
+              sleep 5
+            done
+            echo "$label runtime smoke test failed. Last response: $response"
+            return 1
+          }
+          check_endpoint "https://healthy-lifestyle-app.pages.dev/api/equipment-recognize" "Equipment production"
+          check_endpoint "https://healthy-lifestyle-app.pages.dev/api/nutrition-label-recognize" "Nutrition-label production"
