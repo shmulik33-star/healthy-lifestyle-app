@@ -168,7 +168,8 @@ class CloudSyncService {
     _scheduleAutomaticSync();
   }
 
-  static String _combinedFingerprint(AppState state) => jsonEncode({
+  static String _combinedFingerprint(AppState state) =>
+      jsonEncode(_canonicalize({
         'foods': state.customFoods
             .map((food) => <String, dynamic>{
                   'id': food.id,
@@ -178,7 +179,7 @@ class CloudSyncService {
           ..sort((a, b) =>
               (a['id'] as String).compareTo(b['id'] as String)),
         'state': state.exportCloudSyncState(),
-      });
+      }));
 
   static void _scheduleAutomaticSync({bool immediate = false}) {
     if (_automaticState == null || !isSignedIn) return;
@@ -248,7 +249,23 @@ class CloudSyncService {
   }
 
   static String _stateFingerprint(Map<String, dynamic> payload) =>
-      jsonEncode(payload);
+      jsonEncode(_canonicalize(payload));
+
+  static dynamic _canonicalize(dynamic value) {
+    if (value is Map) {
+      final entries = value.entries
+          .map((entry) => MapEntry(entry.key.toString(), entry.value))
+          .toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      return <String, dynamic>{
+        for (final entry in entries) entry.key: _canonicalize(entry.value),
+      };
+    }
+    if (value is List) {
+      return value.map(_canonicalize).toList();
+    }
+    return value;
+  }
 
   static Future<_StateSyncResult> _syncAppState(
     AppState state,
@@ -409,6 +426,12 @@ class CloudSyncService {
     merged['profile'] = remote['profile'] ?? local['profile'];
     merged['selectedGoals'] =
         remote['selectedGoals'] ?? local['selectedGoals'];
+    merged['weights'] = _mergeListByKey(
+      remote['weights'],
+      local['weights'],
+      _weightKey,
+      preferLocal: false,
+    );
     merged['meals'] = _mergeListByKey(
       remote['meals'],
       local['meals'],
@@ -448,6 +471,12 @@ class CloudSyncService {
     merged['profile'] = local['profile'] ?? remote['profile'];
     merged['selectedGoals'] =
         local['selectedGoals'] ?? remote['selectedGoals'];
+    merged['weights'] = _mergeListByKey(
+      remote['weights'],
+      local['weights'],
+      _weightKey,
+      preferLocal: true,
+    );
     merged['meals'] = _mergeListByKey(
       remote['meals'],
       local['meals'],
@@ -507,8 +536,13 @@ class CloudSyncService {
 
   static String _idKey(Map<String, dynamic> item) {
     final id = item['id']?.toString().trim() ?? '';
-    return id.isNotEmpty ? id : jsonEncode(item);
+    return id.isNotEmpty ? id : jsonEncode(_canonicalize(item));
   }
+
+  static String _weightKey(Map<String, dynamic> item) => jsonEncode({
+        'date': item['date'],
+        'weight': item['weight'],
+      });
 
   static String _mealKey(Map<String, dynamic> item) => jsonEncode({
         'foodId': item['foodId'],
