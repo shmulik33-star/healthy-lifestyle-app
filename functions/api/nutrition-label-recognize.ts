@@ -19,6 +19,9 @@ const labelSchema = {
     name: { type: 'string' },
     basisGrams: { type: 'number', minimum: 0, maximum: 5000 },
     basisLabel: { type: 'string' },
+    calories: { type: 'number', minimum: 0, maximum: 10000 },
+    caloriesLabel: { type: 'string' },
+    caloriesUnit: { type: 'string' },
     rows: {
       type: 'array',
       items: nutritionRowSchema,
@@ -34,6 +37,9 @@ const labelSchema = {
     'name',
     'basisGrams',
     'basisLabel',
+    'calories',
+    'caloriesLabel',
+    'caloriesUnit',
     'rows',
     'servingName',
     'servingGrams',
@@ -374,7 +380,17 @@ function normalizeLabel(parsed: Record<string, unknown>) {
   const carbsRow = selectRow('carbs', rows);
   const fatRow = selectRow('fat', rows);
 
-  const rawCalories = caloriesRow?.value ?? 0;
+  const directCaloriesRow: NutritionRow = {
+    label: typeof parsed.caloriesLabel === 'string' ? parsed.caloriesLabel.trim() : '',
+    value: numberValue(parsed.calories, 10000),
+    unit: typeof parsed.caloriesUnit === 'string' ? parsed.caloriesUnit.trim() : '',
+  };
+  const directCaloriesValid =
+    directCaloriesRow.value > 0 && kcalRow(directCaloriesRow);
+
+  const rawCalories = directCaloriesValid
+    ? directCaloriesRow.value
+    : caloriesRow?.value ?? 0;
   const rawProtein = proteinRow?.value ?? 0;
   const rawCarbs = carbsRow?.value ?? 0;
   const rawFat = fatRow?.value ?? 0;
@@ -389,7 +405,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
   const carbsPer100g = per100(rawCarbs, 100);
   const fatPer100g = per100(rawFat, 100);
   const missingFields = [
-    !caloriesRow ? 'calories' : '',
+    caloriesPer100g <= 0 ? 'calories' : '',
     !proteinRow ? 'protein' : '',
     !carbsRow ? 'carbs' : '',
     !fatRow ? 'fat' : '',
@@ -416,7 +432,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
   const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
   const validationNotes = [
     missingFields.length > 0
-      ? `לא נמצאה שורה מזוהה בבירור עבור: ${missingFields.join(', ')}.`
+      ? `לא נמצאה קריאה ברורה עבור: ${missingFields.join(', ')}.`
       : '',
     energyMismatch
       ? 'יש אי־התאמה גדולה בין הקלוריות לבין החלבון/פחמימות/שומן; מומלץ לבדוק את התווית.'
@@ -436,24 +452,29 @@ function normalizeLabel(parsed: Record<string, unknown>) {
     servingGrams: numberValue(parsed.servingGrams, 5000),
     confidence,
     reason: [reason, ...validationNotes].filter(Boolean).join(' '),
-    validation: 'semantic-nutrition-rows-v4-ocr-first',
+    validation: 'semantic-nutrition-rows-v5-direct-calories',
     missingFields,
     energyMismatch,
     energyDifferenceRatio,
     basisLabel: typeof parsed.basisLabel === 'string' ? parsed.basisLabel.trim() : '',
     sourceLabels: {
-      calories: caloriesRow?.label ?? '',
+      calories: directCaloriesValid
+        ? directCaloriesRow.label
+        : caloriesRow?.label ?? '',
       protein: proteinRow?.label ?? '',
       carbs: carbsRow?.label ?? '',
       fat: fatRow?.label ?? '',
     },
     sourceUnits: {
-      calories: caloriesRow?.unit ?? '',
+      calories: directCaloriesValid
+        ? directCaloriesRow.unit
+        : caloriesRow?.unit ?? '',
       protein: proteinRow?.unit ?? '',
       carbs: carbsRow?.unit ?? '',
       fat: fatRow?.unit ?? '',
     },
     extractedRowCount: rows.length,
+    calorieSource: directCaloriesValid ? 'direct-kcal-field' : 'row-kcal',
   };
 }
 
@@ -505,22 +526,23 @@ async function structureNutritionText(
       {
         role: 'system',
         content:
-          'Transcribe a nutrition table into structured rows. Preserve the pairing between each printed nutrient label and the number from the SAME row. Row order is irrelevant. Never shift values between neighboring rows.',
+          'Transcribe a nutrition table into structured rows. Preserve the pairing between each printed nutrient label and the number from the SAME row. Row order is irrelevant. Never shift values between neighboring rows. Read calories separately only from a clearly identified kcal/Calories value, never from kJ.',
       },
       {
         role: 'user',
         content:
           `Nutrition-label OCR:\n${description.slice(0, 10000)}\n\n` +
           'Choose ONE nutrition-value column, preferring an explicitly labeled per-100-g column. Put its gram basis in basisGrams and its heading in basisLabel. ' +
-          'Output every nutrition row from that same column as {label,value,unit}; keep the printed label as literally as possible. Do not map rows to app fields. ' +
-          'Energy is special: if the OCR contains both kJ and kcal/Calories for the same energy row, output TWO row objects with the same energy label, one for kJ and one for kcal. Never discard kcal because kJ appears first. ' +
+          'CALORIES: in addition to the row transcription, explicitly read the kcal/Calories value from the Energy/Calories row in that SAME chosen column. Put its numeric value in calories, the printed energy/calorie row label in caloriesLabel, and its kcal/Calories notation in caloriesUnit. Never use or convert kJ. If both kJ and kcal are printed, calories must be the kcal value. ' +
+          'ROWS: output every nutrition row from that same column as {label,value,unit}; keep the printed label as literally as possible. Do not map protein/fat/carbs to app fields. The server will map them by their row names. ' +
+          'Energy is special: if the OCR contains both kJ and kcal/Calories for the same energy row, you may output two row objects with the same energy label, one for kJ and one for kcal; still fill the dedicated calories fields from kcal. ' +
           'Recognize kcal forms including kcal, kCal, Kcal, Calories, קק״ל, קק\"ל, קלוריות, سعرات حرارية. ' +
           'Do not mix per-serving and per-100-g values. If a row is unreadable, omit it rather than guessing. ' +
           'Use Hebrew only for name, servingName and reason; preserve nutrition row labels in their original language.',
       },
     ],
     response_format: { type: 'json_schema', json_schema: labelSchema },
-    max_completion_tokens: 1200,
+    max_completion_tokens: 1300,
     temperature: 0,
   });
   const direct = directObject(result);
@@ -534,7 +556,7 @@ export async function onRequestGet(context: any) {
     status: 'ok',
     aiBinding: Boolean(context.env?.AI),
     structureModel: STRUCTURE_MODEL,
-    pipeline: 'nutrition-label-ocr-v7-fast',
+    pipeline: 'nutrition-label-ocr-v8-direct-calories-fast',
   });
 }
 
@@ -584,7 +606,7 @@ export async function onRequestPost(context: any) {
     return jsonResponse({
       ...normalizeLabel(parsed),
       structureModel: STRUCTURE_MODEL,
-      pipeline: 'cloudflare-markdown-ocr-structured-fast',
+      pipeline: 'cloudflare-markdown-ocr-direct-calories-fast',
     });
   } catch (error) {
     console.error('nutrition label recognition failed', error);
