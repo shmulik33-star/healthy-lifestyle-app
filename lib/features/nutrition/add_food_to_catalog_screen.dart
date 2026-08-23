@@ -24,7 +24,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   final fat = TextEditingController();
   final unitName = TextEditingController(text: 'מנה');
   final unitGrams = TextEditingController(text: '100');
-  final labelText = TextEditingController();
 
   String category = 'אחר';
   KosherStatus kosherStatus = KosherStatus.unknown;
@@ -47,7 +46,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       fat,
       unitName,
       unitGrams,
-      labelText,
     ]) {
       c.dispose();
     }
@@ -160,38 +158,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
     }
   }
 
-  void _parseLabel() {
-    final text = labelText.text;
-    double? find(List<String> keys) {
-      for (final key in keys) {
-        final re = RegExp(
-          '$key[^0-9]{0,15}([0-9]+(?:[.,][0-9]+)?)',
-          caseSensitive: false,
-        );
-        final match = re.firstMatch(text);
-        if (match != null) {
-          return double.tryParse(match.group(1)!.replaceAll(',', '.'));
-        }
-      }
-      return null;
-    }
-
-    final c = find(['קלוריות', 'kcal']);
-    final p = find(['חלבון']);
-    final cb = find(['פחמימות']);
-    final f = find(['שומן']);
-    if (c != null) calories.text = _formatNumber(c);
-    if (p != null) protein.text = _formatNumber(p);
-    if (cb != null) carbs.text = _formatNumber(cb);
-    if (f != null) fat.text = _formatNumber(f);
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('הפענוח הידני הושלם. יש לבדוק את הנתונים לפני שמירה.'),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final showKosherFields = widget.state.kosherEnabled;
@@ -297,29 +263,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 14),
-                  const Divider(),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'אפשר גם להדביק טקסט מהתווית',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: labelText,
-                    minLines: 3,
-                    maxLines: 6,
-                    decoration: const InputDecoration(
-                      labelText: 'טקסט מתווית המזון',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: _parseLabel,
-                    icon: const Icon(Icons.document_scanner_outlined),
-                    label: const Text('פענח טקסט ידנית'),
-                  ),
                 ],
               ),
             ),
