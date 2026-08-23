@@ -69,6 +69,7 @@ class EquipmentAiService {
   static Future<EquipmentAiSuggestion> recognize({
     required Uint8List imageBytes,
     required String mimeType,
+    http.Client? client,
   }) async {
     if (imageBytes.isEmpty) {
       throw const EquipmentAiException('התמונה ריקה.', code: 'empty_image');
@@ -80,55 +81,76 @@ class EquipmentAiService {
       );
     }
 
-    http.Response response;
+    final ownedClient = client == null;
+    final httpClient = client ?? http.Client();
+    final encodedBody = jsonEncode({
+      'imageBase64': base64Encode(imageBytes),
+      'mimeType': mimeType,
+    });
+
     try {
-      response = await http
-          .post(
-            endpoint,
-            headers: const {'content-type': 'application/json'},
-            body: jsonEncode({
-              'imageBase64': base64Encode(imageBytes),
-              'mimeType': mimeType,
-            }),
-          )
-          .timeout(const Duration(seconds: 45));
+      var response = await _post(httpClient, encodedBody);
+      var decoded = _decodeResponse(response);
+
+      // Workers AI can occasionally return an empty model payload even though
+      // the runtime and AI binding are healthy. Retry this one transient shape
+      // once automatically so the user does not have to take the photo again.
+      if (response.statusCode != 200 &&
+          decoded?['error']?.toString() == 'empty_model_response') {
+        response = await _post(httpClient, encodedBody);
+        decoded = _decodeResponse(response);
+      }
+
+      if (response.statusCode != 200) {
+        final serverCode = decoded?['error']?.toString() ??
+            'http_${response.statusCode}';
+        if (response.statusCode == 413 || serverCode == 'image_too_large') {
+          throw const EquipmentAiException(
+            'התמונה גדולה מדי לזיהוי. אפשר לצלם מחדש מקרוב יותר.',
+            code: 'image_too_large',
+          );
+        }
+        throw EquipmentAiException(
+          'שירות הזיהוי לא הצליח לנתח את התמונה. אפשר לנסות שוב או למלא ידנית.',
+          code: serverCode,
+        );
+      }
+
+      if (decoded == null) {
+        throw const EquipmentAiException(
+          'קיבלתי תשובה לא תקינה משירות הזיהוי. אפשר לנסות שוב.',
+          code: 'invalid_response',
+        );
+      }
+
+      return EquipmentAiSuggestion.fromJson(decoded);
+    } on EquipmentAiException {
+      rethrow;
     } catch (_) {
       throw const EquipmentAiException(
         'לא הצלחתי להגיע לשירות הזיהוי כרגע. אפשר לנסות שוב או למלא ידנית.',
         code: 'network_or_timeout',
       );
+    } finally {
+      if (ownedClient) httpClient.close();
     }
+  }
 
-    Map<String, dynamic>? decoded;
+  static Future<http.Response> _post(http.Client client, String body) => client
+      .post(
+        endpoint,
+        headers: const {'content-type': 'application/json'},
+        body: body,
+      )
+      .timeout(const Duration(seconds: 45));
+
+  static Map<String, dynamic>? _decodeResponse(http.Response response) {
     try {
       final value = jsonDecode(response.body);
-      if (value is Map) decoded = Map<String, dynamic>.from(value);
+      if (value is Map) return Map<String, dynamic>.from(value);
     } catch (_) {
-      // Handled below as an invalid server response.
+      // Handled by the caller as an invalid server response.
     }
-
-    if (response.statusCode != 200) {
-      final serverCode = decoded?['error']?.toString() ??
-          'http_${response.statusCode}';
-      if (response.statusCode == 413 || serverCode == 'image_too_large') {
-        throw const EquipmentAiException(
-          'התמונה גדולה מדי לזיהוי. אפשר לצלם מחדש מקרוב יותר.',
-          code: 'image_too_large',
-        );
-      }
-      throw EquipmentAiException(
-        'שירות הזיהוי לא הצליח לנתח את התמונה. אפשר לנסות שוב או למלא ידנית.',
-        code: serverCode,
-      );
-    }
-
-    if (decoded == null) {
-      throw const EquipmentAiException(
-        'קיבלתי תשובה לא תקינה משירות הזיהוי. אפשר לנסות שוב.',
-        code: 'invalid_response',
-      );
-    }
-
-    return EquipmentAiSuggestion.fromJson(decoded);
+    return null;
   }
 }
