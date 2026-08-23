@@ -87,6 +87,8 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
         (pantryItem.foodId.isEmpty &&
             AppState._sameFoodName(pantryItem.name, food.name))) {
       pantryItem.foodId = food.id;
+      pantryItem.name = food.name;
+      pantryItem.category = food.category;
     }
   }
   state.notifyListeners();

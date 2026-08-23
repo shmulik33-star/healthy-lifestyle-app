@@ -81,14 +81,165 @@ void main() {
 
     state.addCustomFood(waterTuna);
     state.addCustomFood(oilTuna);
-    state.addPantryItem(waterTuna.name, 2, 'קופסאות', waterTuna.category, foodId: waterTuna.id);
-    state.addPantryItem(oilTuna.name, 2, 'קופסאות', oilTuna.category, foodId: oilTuna.id);
+    state.addPantryItem(
+      waterTuna.name,
+      2,
+      'קופסאות',
+      waterTuna.category,
+      foodId: waterTuna.id,
+    );
+    state.addPantryItem(
+      oilTuna.name,
+      2,
+      'קופסאות',
+      oilTuna.category,
+      foodId: oilTuna.id,
+    );
 
     state.addFood(oilTuna, 1, 'קופסה');
 
-    final waterStock = state.pantryItems.singleWhere((item) => item.foodId == waterTuna.id);
-    final oilStock = state.pantryItems.singleWhere((item) => item.foodId == oilTuna.id);
+    final waterStock = state.pantryItems.singleWhere(
+      (item) => item.foodId == waterTuna.id,
+    );
+    final oilStock = state.pantryItems.singleWhere(
+      (item) => item.foodId == oilTuna.id,
+    );
     expect(waterStock.quantity, 2);
     expect(oilStock.quantity, 1);
+  });
+
+  test('manual pantry entry links to one exact catalog food id', () {
+    final state = AppState();
+    const food = FoodItem(
+      id: 'custom_exact_name_link',
+      name: 'ממרח עדשים ייחודי',
+      category: 'ממרחים ורטבים',
+      type: KosherFoodType.pareve,
+      caloriesPer100g: 160,
+      proteinPer100g: 8,
+      carbsPer100g: 20,
+      fatPer100g: 5,
+      units: {'מנה': 50, 'גרם': 1},
+      userCreated: true,
+    );
+
+    state.addCustomFood(food);
+    state.addPantryItem(food.name, 2, 'מנות', food.category);
+
+    expect(state.pantryItems.single.foodId, food.id);
+  });
+
+  test('pantry and shopping follow an edited custom food id', () {
+    final state = AppState();
+    const original = FoodItem(
+      id: 'custom_rename_sync',
+      name: 'ממרח ביתי ישן',
+      category: 'ממרחים ורטבים',
+      type: KosherFoodType.pareve,
+      caloriesPer100g: 150,
+      proteinPer100g: 6,
+      carbsPer100g: 20,
+      fatPer100g: 5,
+      units: {'מנה': 50, 'גרם': 1},
+      userCreated: true,
+    );
+    const edited = FoodItem(
+      id: 'custom_rename_sync',
+      name: 'ממרח עדשים חדש',
+      category: 'קטניות',
+      type: KosherFoodType.pareve,
+      caloriesPer100g: 155,
+      proteinPer100g: 7,
+      carbsPer100g: 21,
+      fatPer100g: 5,
+      units: {'מנה': 50, 'גרם': 1},
+      userCreated: true,
+    );
+
+    state.addCustomFood(original);
+    state.addPantryItem(
+      original.name,
+      2,
+      'מנות',
+      original.category,
+      foodId: original.id,
+    );
+    state.addFood(original, 1, 'מנה');
+    state.addCustomFood(edited);
+
+    final pantry = state.pantryItems.single;
+    expect(pantry.foodId, edited.id);
+    expect(pantry.name, edited.name);
+    expect(pantry.category, edited.category);
+    expect(pantry.quantity, 1);
+
+    final consumption = state.last7DayConsumption;
+    expect(consumption[edited.name], 1);
+    expect(consumption.containsKey(original.name), isFalse);
+  });
+
+  test('egg aliases do not merge or consume egg salad as plain eggs', () {
+    final state = AppState();
+    state.addPantryItem(
+      'ביצים',
+      6,
+      'יחידות',
+      'ביצים',
+      foodId: 'egg',
+    );
+    state.addPantryItem(
+      'סלט ביצים',
+      2,
+      'מנות',
+      'מאפים ומזון מוכן',
+      foodId: 'egg_salad',
+    );
+
+    expect(state.pantryItems, hasLength(2));
+
+    final meal = MealEntry(
+      foodId: 'egg_salad',
+      name: 'סלט ביצים',
+      quantity: 1,
+      unit: 'מנה',
+      grams: 200,
+      calories: 300,
+      protein: 14,
+      carbs: 8,
+      fat: 22,
+      type: KosherFoodType.pareve,
+      time: DateTime.now(),
+    );
+    state.consumeFromPantryByMeal(meal);
+
+    final eggs = state.pantryItems.singleWhere((item) => item.foodId == 'egg');
+    final eggSalad = state.pantryItems.singleWhere(
+      (item) => item.foodId == 'egg_salad',
+    );
+    expect(eggs.quantity, 6);
+    expect(eggSalad.quantity, 1);
+  });
+
+  test('egg salad consumption is not converted into egg-unit shopping data', () {
+    final state = AppState();
+    state.meals.add(
+      MealEntry(
+        foodId: 'egg_salad',
+        name: 'סלט ביצים',
+        quantity: 2,
+        unit: 'מנה',
+        grams: 400,
+        calories: 600,
+        protein: 28,
+        carbs: 16,
+        fat: 44,
+        type: KosherFoodType.pareve,
+        time: DateTime.now(),
+      ),
+    );
+
+    final consumption = state.last7DayConsumption;
+    expect(consumption['סלט ביצים'], 2);
+    expect(consumption.containsKey('ביצים'), isFalse);
   });
 }

@@ -437,25 +437,24 @@ class AppState extends ChangeNotifier {
 
   // IDs are the source of truth whenever they exist. Name matching is only
   // a compatibility fallback for legacy or manually entered pantry data.
-  static bool _sameFoodName(String a,String b){
-    String normalize(String value)=>value
+  static String _normalizeFoodName(String value)=>value
       .trim()
       .toLowerCase()
       .replaceAll('׳','')
       .replaceAll("'",'')
       .replaceAll(RegExp(r'\s+'),' ');
-    String singularize(String value){
-      var result=normalize(value);
-      if(result.length>2 && (result.endsWith('ים') || result.endsWith('ות'))){
-        result=result.substring(0,result.length-2);
-      }
-      return result;
-    }
-    final rawA=normalize(a);
-    final rawB=normalize(b);
+
+  static bool _sameFoodName(String a,String b){
+    final rawA=_normalizeFoodName(a);
+    final rawB=_normalizeFoodName(b);
     if(rawA==rawB)return true;
-    if(rawA.contains('ביצ') && rawB.contains('ביצ')) return true;
-    return singularize(rawA)==singularize(rawB);
+    const eggAliases={'ביצה','ביצים','egg','eggs'};
+    return eggAliases.contains(rawA) && eggAliases.contains(rawB);
+  }
+
+  String _foodIdForUniqueName(String name){
+    final matches=allFoods.where((food)=>_sameFoodName(food.name,name)).toList();
+    return matches.length==1 ? matches.single.id : '';
   }
 
   void removeMeal(MealEntry meal) => _nutritionRemoveMeal(this, meal);
@@ -533,16 +532,13 @@ class AppState extends ChangeNotifier {
     String foodId = '',
   }) {
     if(foodId.isEmpty){
-      for(final f in allFoods){
-        if(_sameFoodName(f.name,name)){ foodId=f.id; break; }
-      }
+      foodId=_foodIdForUniqueName(name);
     }
     PantryItem? existing;
     for(final p in pantryItems){
-      final bothIdsKnown=foodId.isNotEmpty && p.foodId.isNotEmpty;
-      final isSame=bothIdsKnown
-          ? p.foodId==foodId
-          : _sameFoodName(p.name,name);
+      final isSame=foodId.isNotEmpty
+          ? (p.foodId.isNotEmpty ? p.foodId==foodId : _sameFoodName(p.name,name))
+          : (p.foodId.isEmpty && _sameFoodName(p.name,name));
       if(isSame){
         existing=p;
         break;
@@ -579,13 +575,7 @@ class AppState extends ChangeNotifier {
   }) {
     if (name != null && name != item.name) {
       item.name = name;
-      item.foodId = '';
-      for(final food in allFoods){
-        if(_sameFoodName(food.name,name)){
-          item.foodId=food.id;
-          break;
-        }
-      }
+      item.foodId = _foodIdForUniqueName(name);
     } else if (name != null) {
       item.name = name;
     }
@@ -627,7 +617,7 @@ class AppState extends ChangeNotifier {
     if(item==null) return;
 
     double used=meal.quantity;
-    if(meal.foodId=='egg' || meal.name.contains('ביצה')){
+    if(meal.foodId=='egg' || _sameFoodName(meal.name,'ביצה')){
       used=meal.grams/50.0;
     }else if(item.unit.contains('גרם')){
       used=meal.grams;
