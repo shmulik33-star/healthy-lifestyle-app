@@ -1,4 +1,5 @@
 const MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const STRUCTURE_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
 
 const labelSchema = {
   type: 'object',
@@ -29,20 +30,6 @@ const labelSchema = {
     'confidence',
     'reason',
   ],
-};
-
-type RawLabel = {
-  recognized: boolean;
-  name: string;
-  basisGrams: number;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  servingName: string;
-  servingGrams: number;
-  confidence: number;
-  reason: string;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -184,7 +171,7 @@ function normalizeLabel(parsed: Record<string, unknown>) {
 }
 
 async function structureDescription(ai: any, description: string) {
-  const result = await ai.run(MODEL, {
+  const result = await ai.run(STRUCTURE_MODEL, {
     messages: [
       {
         role: 'system',
@@ -196,8 +183,7 @@ async function structureDescription(ai: any, description: string) {
       },
     ],
     response_format: { type: 'json_schema', json_schema: labelSchema },
-    max_completion_tokens: 600,
-    reasoning_effort: 'low',
+    max_completion_tokens: 700,
     temperature: 0,
   });
   const direct = directObject(result);
@@ -206,12 +192,53 @@ async function structureDescription(ai: any, description: string) {
   return raw ? extractJson(raw) : null;
 }
 
+async function runVision(ai: any, dataUrl: string, prompt: string) {
+  return ai.run(MODEL, {
+    messages: [
+      {
+        role: 'system',
+        content: 'You carefully read food nutrition labels from images and never fabricate missing values.',
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+    max_completion_tokens: 1400,
+    reasoning_effort: 'low',
+    temperature: 0.1,
+  });
+}
+
+function diagnosticShape(result: any) {
+  const choice = Array.isArray(result?.choices) ? result.choices[0] : null;
+  const message = choice?.message;
+  return {
+    responseShape: Object.keys(result ?? {}).slice(0, 12).join(','),
+    choiceShape: choice && typeof choice === 'object'
+      ? Object.keys(choice).slice(0, 12).join(',')
+      : '',
+    messageShape: message && typeof message === 'object'
+      ? Object.keys(message).slice(0, 12).join(',')
+      : '',
+    finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : '',
+    contentType: Array.isArray(message?.content)
+      ? 'array'
+      : typeof message?.content,
+    completionTokens: Number(result?.usage?.completion_tokens ?? 0),
+  };
+}
+
 export async function onRequestGet(context: any) {
   return jsonResponse({
     status: 'ok',
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
-    pipeline: 'nutrition-label-vision-v1',
+    structureModel: STRUCTURE_MODEL,
+    pipeline: 'nutrition-label-vision-v2',
   });
 }
 
@@ -264,37 +291,33 @@ Rules:
 - protein, carbs and fat are grams for the same basisGrams column.
 - Use the product/food name only if it is clearly visible; otherwise return an empty name.
 - servingName and servingGrams are optional convenience fields and must be visible on the label.
-- Do not infer kosher status, meat/dairy/pareve classification, ingredients, allergens, brand or category unless directly requested. They are not part of this output.
+- Do not infer kosher status, meat/dairy/pareve classification, ingredients, allergens, brand or category. They are not part of this output.
 - Never invent a missing number.
 - If a readable gram-based nutrition table is not visible, return recognized=false and low confidence.
 - Use Hebrew for name, servingName and reason.
+
+Return exactly one JSON object and no surrounding prose. It must contain all of these keys:
+recognized, name, basisGrams, calories, protein, carbs, fat, servingName, servingGrams, confidence, reason.
 `;
 
   try {
-    const result = await ai.run(MODEL, {
-      messages: [
-        {
-          role: 'system',
-          content: 'You carefully read food nutrition labels from images and never fabricate missing values.',
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-      response_format: { type: 'json_schema', json_schema: labelSchema },
-      max_completion_tokens: 700,
-      reasoning_effort: 'low',
-      temperature: 0.1,
-    });
-
-    const direct = directObject(result);
-    const raw = extractModelText(result);
+    let result = await runVision(ai, dataUrl, prompt);
+    let direct = directObject(result);
+    let raw = extractModelText(result);
     let parsed = direct ?? (raw ? extractJson(raw) : null);
-    let pipeline = 'vision-json-schema';
+    let pipeline = direct ? 'vision-direct-object' : 'vision-json-text';
+
+    if (!parsed && !raw && !direct) {
+      result = await runVision(
+        ai,
+        dataUrl,
+        `${prompt}\nThis is a retry. Focus only on the visible nutrition table and return the JSON object.`,
+      );
+      direct = directObject(result);
+      raw = extractModelText(result);
+      parsed = direct ?? (raw ? extractJson(raw) : null);
+      pipeline = direct ? 'vision-retry-direct-object' : 'vision-retry-json-text';
+    }
 
     if (!parsed && raw) {
       try {
@@ -307,9 +330,9 @@ Rules:
 
     if (!parsed) {
       if (!raw && !direct) {
-        const responseShape = Object.keys(result ?? {}).slice(0, 12).join(',');
-        console.warn('nutrition label recognition returned no readable output', result);
-        return jsonResponse({ error: 'empty_model_response', responseShape }, 502);
+        const diagnostic = diagnosticShape(result);
+        console.warn('nutrition label recognition returned no readable output', diagnostic);
+        return jsonResponse({ error: 'empty_model_response', ...diagnostic }, 502);
       }
       return jsonResponse({ error: 'invalid_model_response_after_fallback' }, 502);
     }
@@ -317,6 +340,7 @@ Rules:
     return jsonResponse({
       ...normalizeLabel(parsed),
       model: MODEL,
+      structureModel: STRUCTURE_MODEL,
       pipeline,
     });
   } catch (error) {
