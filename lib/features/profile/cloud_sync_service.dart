@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/models/app_state.dart';
@@ -23,11 +24,22 @@ class CloudSyncService {
   static User? get currentUser => _client.auth.currentUser;
   static bool get isSignedIn => currentUser != null;
 
+  static String? get _emailRedirectTo {
+    if (!kIsWeb) return null;
+    final uri = Uri.base;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+    return uri.origin;
+  }
+
   static Future<AuthResponse> signUp({
     required String email,
     required String password,
   }) =>
-      _client.auth.signUp(email: email, password: password);
+      _client.auth.signUp(
+        email: email,
+        password: password,
+        emailRedirectTo: _emailRedirectTo,
+      );
 
   static Future<AuthResponse> signIn({
     required String email,
