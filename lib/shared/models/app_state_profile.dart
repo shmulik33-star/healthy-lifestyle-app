@@ -117,6 +117,14 @@ extension AppStateCloudSyncBridge on AppState {
         'shoppingItems': shoppingItems.map((item) => item.toJson()).toList(),
         'shoppingChecked': Map<String, bool>.from(shoppingChecked),
         'shoppingInitialized': shoppingInitialized,
+        'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
+        'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
+        'deletedMealKeys': _encodeTombstoneMap(deletedMealKeys),
+        // Custom foods themselves live in the user_custom_foods table (see
+        // CloudSyncService.syncCustomFoods), but the deletion tombstones ride
+        // along in this snapshot so they reach every device the same way the
+        // other tombstones above do.
+        'deletedCustomFoodIds': _encodeTombstoneMap(deletedCustomFoodIds),
       };
 
   Future<void> applyCloudSyncState(Map<String, dynamic> data) async {
@@ -206,6 +214,22 @@ extension AppStateCloudSyncBridge on AppState {
     }
     shoppingInitialized =
         data['shoppingInitialized'] as bool? ?? shoppingInitialized;
+
+    // The incoming payload already reflects the merged (local ∪ remote)
+    // tombstone set when it comes from CloudSyncService's merge helpers, so
+    // this is a plain replace, matching every other list field above.
+    deletedPantryItemIds
+      ..clear()
+      ..addAll(decodeTombstoneMap(data['deletedPantryItemIds']));
+    deletedShoppingItemIds
+      ..clear()
+      ..addAll(decodeTombstoneMap(data['deletedShoppingItemIds']));
+    deletedMealKeys
+      ..clear()
+      ..addAll(decodeTombstoneMap(data['deletedMealKeys']));
+    deletedCustomFoodIds
+      ..clear()
+      ..addAll(decodeTombstoneMap(data['deletedCustomFoodIds']));
 
     generateWeeklyPlan(save: false);
     await _save();
