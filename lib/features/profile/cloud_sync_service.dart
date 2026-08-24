@@ -229,8 +229,13 @@ class CloudSyncService {
     }
 
     await _loadMetaForUser(user.id);
-    final foods = await syncCustomFoods(state);
+    // App-state sync runs first so that a custom-food deletion tombstone
+    // recorded on another device (carried inside the app-state snapshot,
+    // see `deletedCustomFoodIds`) is merged in locally before we decide
+    // which custom foods to download below — otherwise a food deleted on
+    // device A could still be re-downloaded by device B for one more cycle.
     final stateResult = await _syncAppState(state, user.id);
+    final foods = await syncCustomFoods(state);
 
     return CloudSyncResult(
       foods: foods,
@@ -426,6 +431,24 @@ class CloudSyncService {
     merged['profile'] = remote['profile'] ?? local['profile'];
     merged['selectedGoals'] =
         remote['selectedGoals'] ?? local['selectedGoals'];
+
+    final deletedPantryIds = _mergeTombstoneMaps(
+      remote['deletedPantryItemIds'],
+      local['deletedPantryItemIds'],
+    );
+    final deletedShoppingIds = _mergeTombstoneMaps(
+      remote['deletedShoppingItemIds'],
+      local['deletedShoppingItemIds'],
+    );
+    final deletedMeals = _mergeTombstoneMaps(
+      remote['deletedMealKeys'],
+      local['deletedMealKeys'],
+    );
+    final deletedCustomFoods = _mergeTombstoneMaps(
+      remote['deletedCustomFoodIds'],
+      local['deletedCustomFoodIds'],
+    );
+
     merged['weights'] = _mergeListByKey(
       remote['weights'],
       local['weights'],
@@ -437,18 +460,21 @@ class CloudSyncService {
       local['meals'],
       _mealKey,
       preferLocal: false,
+      deletedKeys: deletedMeals.keys.toSet(),
     );
     merged['pantryItems'] = _mergeListByKey(
       remote['pantryItems'],
       local['pantryItems'],
       _idKey,
       preferLocal: false,
+      deletedKeys: deletedPantryIds.keys.toSet(),
     );
     merged['shoppingItems'] = _mergeListByKey(
       remote['shoppingItems'],
       local['shoppingItems'],
       _idKey,
       preferLocal: false,
+      deletedKeys: deletedShoppingIds.keys.toSet(),
     );
     merged['shoppingChecked'] = _mergeBoolMaps(
       local['shoppingChecked'],
@@ -457,6 +483,10 @@ class CloudSyncService {
     merged['shoppingInitialized'] =
         remote['shoppingInitialized'] == true ||
             local['shoppingInitialized'] == true;
+    merged['deletedPantryItemIds'] = deletedPantryIds;
+    merged['deletedShoppingItemIds'] = deletedShoppingIds;
+    merged['deletedMealKeys'] = deletedMeals;
+    merged['deletedCustomFoodIds'] = deletedCustomFoods;
     return merged;
   }
 
@@ -471,6 +501,24 @@ class CloudSyncService {
     merged['profile'] = local['profile'] ?? remote['profile'];
     merged['selectedGoals'] =
         local['selectedGoals'] ?? remote['selectedGoals'];
+
+    final deletedPantryIds = _mergeTombstoneMaps(
+      remote['deletedPantryItemIds'],
+      local['deletedPantryItemIds'],
+    );
+    final deletedShoppingIds = _mergeTombstoneMaps(
+      remote['deletedShoppingItemIds'],
+      local['deletedShoppingItemIds'],
+    );
+    final deletedMeals = _mergeTombstoneMaps(
+      remote['deletedMealKeys'],
+      local['deletedMealKeys'],
+    );
+    final deletedCustomFoods = _mergeTombstoneMaps(
+      remote['deletedCustomFoodIds'],
+      local['deletedCustomFoodIds'],
+    );
+
     merged['weights'] = _mergeListByKey(
       remote['weights'],
       local['weights'],
@@ -482,18 +530,21 @@ class CloudSyncService {
       local['meals'],
       _mealKey,
       preferLocal: true,
+      deletedKeys: deletedMeals.keys.toSet(),
     );
     merged['pantryItems'] = _mergeListByKey(
       remote['pantryItems'],
       local['pantryItems'],
       _idKey,
       preferLocal: true,
+      deletedKeys: deletedPantryIds.keys.toSet(),
     );
     merged['shoppingItems'] = _mergeListByKey(
       remote['shoppingItems'],
       local['shoppingItems'],
       _idKey,
       preferLocal: true,
+      deletedKeys: deletedShoppingIds.keys.toSet(),
     );
     merged['shoppingChecked'] = _mergeBoolMaps(
       remote['shoppingChecked'],
@@ -502,7 +553,36 @@ class CloudSyncService {
     merged['shoppingInitialized'] =
         remote['shoppingInitialized'] == true ||
             local['shoppingInitialized'] == true;
+    merged['deletedPantryItemIds'] = deletedPantryIds;
+    merged['deletedShoppingItemIds'] = deletedShoppingIds;
+    merged['deletedMealKeys'] = deletedMeals;
+    merged['deletedCustomFoodIds'] = deletedCustomFoods;
     return merged;
+  }
+
+  /// Unions two `{key: isoDateString}` tombstone maps, keeping the later
+  /// (most recent) timestamp when a key appears on both sides. This is what
+  /// lets a deletion made on one device survive being merged with a device
+  /// that hasn't seen it yet, instead of the union-by-key list merge quietly
+  /// bringing the deleted item back.
+  static Map<String, String> _mergeTombstoneMaps(
+    dynamic remoteRaw,
+    dynamic localRaw,
+  ) {
+    final result = <String, DateTime>{};
+    for (final raw in [remoteRaw, localRaw]) {
+      if (raw is! Map) continue;
+      for (final entry in raw.entries) {
+        final parsed = DateTime.tryParse(entry.value?.toString() ?? '');
+        if (parsed == null) continue;
+        final key = entry.key.toString();
+        final existing = result[key];
+        if (existing == null || parsed.isAfter(existing)) {
+          result[key] = parsed;
+        }
+      }
+    }
+    return result.map((key, value) => MapEntry(key, value.toIso8601String()));
   }
 
   static List<Map<String, dynamic>> _mergeListByKey(
@@ -510,15 +590,19 @@ class CloudSyncService {
     dynamic secondRaw,
     String Function(Map<String, dynamic>) keyOf, {
     required bool preferLocal,
+    Set<String> deletedKeys = const {},
   }) {
     final first = _mapList(firstRaw);
     final second = _mapList(secondRaw);
     final byKey = <String, Map<String, dynamic>>{};
     for (final item in first) {
-      byKey[keyOf(item)] = item;
+      final key = keyOf(item);
+      if (deletedKeys.contains(key)) continue;
+      byKey[key] = item;
     }
     for (final item in second) {
       final key = keyOf(item);
+      if (deletedKeys.contains(key)) continue;
       if (preferLocal || !byKey.containsKey(key)) {
         byKey[key] = item;
       }
@@ -615,7 +699,11 @@ class CloudSyncService {
     _lastSyncedStateFingerprint = '';
   }
 
-  /// User-created food sync remains a safe union by food id.
+  /// User-created food sync: union by food id, with deletions tracked as
+  /// tombstones so a food removed on one device does not get silently
+  /// re-added by another (see `state.deletedCustomFoodIds`, which is
+  /// merged in as part of the app-state snapshot before this runs — see
+  /// `syncAllNow`).
   static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) async {
     final user = currentUser;
     if (user == null) {
@@ -623,6 +711,7 @@ class CloudSyncService {
     }
 
     final localBeforeSync = List<FoodItem>.from(state.customFoods);
+    final deletedIds = state.deletedCustomFoodIds.keys.toSet();
     final response = await _client
         .from('user_custom_foods')
         .select('food_id,payload,updated_at');
@@ -648,6 +737,9 @@ class CloudSyncService {
     try {
       for (final entry in cloudById.entries) {
         if (localIds.contains(entry.key)) continue;
+        // Don't resurrect a food this device (or another, via the merged
+        // tombstone set) has already deleted.
+        if (deletedIds.contains(entry.key)) continue;
         state.addCustomFood(entry.value);
         downloaded++;
       }
@@ -671,6 +763,29 @@ class CloudSyncService {
             uploads,
             onConflict: 'user_id,food_id',
           );
+    }
+
+    // Propagate local deletions to the cloud row itself, so the table
+    // doesn't accumulate rows that every device has already tombstoned.
+    // This is a cleanup step, not the correctness mechanism — the tombstone
+    // map above is what actually prevents resurrection, so a failure here
+    // (offline, RLS, etc.) is safe to ignore and retry on the next sync.
+    final idsToDeleteFromCloud =
+        deletedIds.where(cloudById.containsKey).toList();
+    if (idsToDeleteFromCloud.isNotEmpty) {
+      try {
+        await _client
+            .from('user_custom_foods')
+            .delete()
+            .eq('user_id', user.id)
+            .inFilter('food_id', idsToDeleteFromCloud);
+        for (final id in idsToDeleteFromCloud) {
+          cloudById.remove(id);
+        }
+      } catch (_) {
+        // Leave the tombstone in place; it still blocks re-download above,
+        // and we'll retry the cloud cleanup on the next sync.
+      }
     }
 
     final totalIds = <String>{
