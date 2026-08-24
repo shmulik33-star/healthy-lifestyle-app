@@ -83,4 +83,50 @@ void main() {
     expect(restored.shoppingChecked['מלפפון'], isTrue);
     expect(restored.shoppingInitialized, isTrue);
   });
+
+  test('daily progress cloud bridge merges current day and history safely', () async {
+    final source = AppState();
+    final currentKey = source.dayKeyAt(DateTime.now());
+    source.dailyStateKey = currentKey;
+    source.waterCups = 4;
+    source.steps = 4321;
+    source.workoutCompleted = true;
+    source.dailyHistory.addAll([
+      const DailySnapshot(
+        dayKey: '2026-08-22',
+        waterCups: 7,
+        steps: 6100,
+        workoutCompleted: false,
+      ),
+      DailySnapshot(
+        dayKey: currentKey,
+        waterCups: 2,
+        steps: 5000,
+        workoutCompleted: false,
+      ),
+    ]);
+
+    final payload = source.exportDailyProgressForCloud();
+    final currentRow = payload.singleWhere((row) => row['dayKey'] == currentKey);
+    expect(currentRow['waterCups'], 4);
+    expect(currentRow['steps'], 5000);
+    expect(currentRow['workoutCompleted'], isTrue);
+
+    final restored = AppState();
+    await restored.applyDailyProgressFromCloud(payload);
+
+    expect(restored.dailyStateKey, currentKey);
+    expect(restored.waterCups, 4);
+    expect(restored.steps, 5000);
+    expect(restored.workoutCompleted, isTrue);
+    expect(
+      restored.dailyHistory.any(
+        (snapshot) =>
+            snapshot.dayKey == '2026-08-22' &&
+            snapshot.waterCups == 7 &&
+            snapshot.steps == 6100,
+      ),
+      isTrue,
+    );
+  });
 }

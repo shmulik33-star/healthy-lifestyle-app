@@ -82,10 +82,19 @@ void _profileAddWeight(AppState state, double value) {
   state._save();
 }
 
+DailySnapshot _mergeDailySnapshots(DailySnapshot a, DailySnapshot b) =>
+    DailySnapshot(
+      dayKey: a.dayKey,
+      waterCups: a.waterCups > b.waterCups ? a.waterCups : b.waterCups,
+      steps: a.steps > b.steps ? a.steps : b.steps,
+      workoutCompleted: a.workoutCompleted || b.workoutCompleted,
+    );
+
 /// Stable bridge used by the cloud-sync service.
 ///
-/// The cloud intentionally contains cross-device personal data. Daily counters
-/// still stay local until their own conflict rules are defined.
+/// The main app snapshot contains profile and list-like personal data. Daily
+/// progress has its own conflict-safe cloud table, exposed through the methods
+/// below, so counters changed on two devices can be merged instead of replaced.
 extension AppStateCloudSyncBridge on AppState {
   Map<String, dynamic> exportCloudSyncState() => {
         'version': 1,
@@ -126,6 +135,69 @@ extension AppStateCloudSyncBridge on AppState {
         // other tombstones above do.
         'deletedCustomFoodIds': _encodeTombstoneMap(deletedCustomFoodIds),
       };
+
+  List<Map<String, dynamic>> exportDailyProgressForCloud() {
+    final byDay = <String, DailySnapshot>{};
+    for (final snapshot in dailyHistory) {
+      if (snapshot.dayKey.isEmpty) continue;
+      final existing = byDay[snapshot.dayKey];
+      byDay[snapshot.dayKey] = existing == null
+          ? snapshot
+          : _mergeDailySnapshots(existing, snapshot);
+    }
+
+    final currentKey = dailyStateKey.isEmpty
+        ? dayKeyAt(DateTime.now())
+        : dailyStateKey;
+    final current = DailySnapshot(
+      dayKey: currentKey,
+      waterCups: waterCups,
+      steps: steps,
+      workoutCompleted: workoutCompleted,
+    );
+    final existingCurrent = byDay[currentKey];
+    byDay[currentKey] = existingCurrent == null
+        ? current
+        : _mergeDailySnapshots(existingCurrent, current);
+
+    final snapshots = byDay.values.toList()
+      ..sort((a, b) => a.dayKey.compareTo(b.dayKey));
+    return snapshots.map((snapshot) => snapshot.toJson()).toList();
+  }
+
+  Future<void> applyDailyProgressFromCloud(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final byDay = <String, DailySnapshot>{};
+    for (final raw in rows) {
+      final snapshot = DailySnapshot.fromJson(raw);
+      if (snapshot.dayKey.isEmpty) continue;
+      final existing = byDay[snapshot.dayKey];
+      byDay[snapshot.dayKey] = existing == null
+          ? snapshot
+          : _mergeDailySnapshots(existing, snapshot);
+    }
+
+    final currentKey = dayKeyAt(DateTime.now());
+    final current = byDay.remove(currentKey);
+    if (current != null) {
+      waterCups = current.waterCups;
+      steps = current.steps;
+      workoutCompleted = current.workoutCompleted;
+    }
+    dailyStateKey = currentKey;
+
+    final history = byDay.values.toList()
+      ..sort((a, b) => a.dayKey.compareTo(b.dayKey));
+    dailyHistory
+      ..clear()
+      ..addAll(history.length <= 120
+          ? history
+          : history.sublist(history.length - 120));
+
+    notifyListeners();
+    await _save();
+  }
 
   Future<void> applyCloudSyncState(Map<String, dynamic> data) async {
     final profileRaw = data['profile'];
