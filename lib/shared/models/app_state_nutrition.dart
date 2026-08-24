@@ -97,6 +97,7 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
 
 void _nutritionDeleteCustomFood(AppState state, FoodItem food) {
   state.customFoods.removeWhere((existing) => existing.id == food.id);
+  state.deletedCustomFoodIds[food.id] = DateTime.now().toUtc();
   for (final pantryItem in state.pantryItems) {
     if (pantryItem.foodId == food.id) {
       pantryItem.foodId = '';
@@ -108,6 +109,7 @@ void _nutritionDeleteCustomFood(AppState state, FoodItem food) {
 
 void _nutritionRemoveMeal(AppState state, MealEntry meal) {
   state.meals.remove(meal);
+  state.deletedMealKeys[mealTombstoneKey(meal)] = DateTime.now().toUtc();
   state.notifyListeners();
   state._save();
 }

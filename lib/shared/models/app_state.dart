@@ -10,6 +10,36 @@ part 'app_state_nutrition.dart';
 part 'app_state_profile.dart';
 part 'app_state_shopping.dart';
 
+/// Stable key for a meal entry used to track deletions across devices.
+///
+/// Meals have no `id` field, so deletions are tracked by the same content
+/// key the cloud-sync merge already uses to identify "the same meal" when
+/// unioning local and remote lists (see `_mealKey` in cloud_sync_service.dart
+/// — keep these two in sync if either changes).
+String mealTombstoneKey(MealEntry meal) => jsonEncode({
+      'foodId': meal.foodId,
+      'name': meal.name,
+      'quantity': meal.quantity,
+      'unit': meal.unit,
+      'grams': meal.grams,
+      'time': meal.time.toIso8601String(),
+    });
+
+/// Decodes a `{id: isoDateString}` map back into `{id: DateTime}`,
+/// skipping any entries that fail to parse rather than throwing.
+Map<String, DateTime> decodeTombstoneMap(dynamic raw) {
+  if (raw is! Map) return {};
+  final result = <String, DateTime>{};
+  for (final entry in raw.entries) {
+    final parsed = DateTime.tryParse(entry.value?.toString() ?? '');
+    if (parsed != null) result[entry.key.toString()] = parsed;
+  }
+  return result;
+}
+
+Map<String, String> _encodeTombstoneMap(Map<String, DateTime> map) =>
+    map.map((key, value) => MapEntry(key, value.toIso8601String()));
+
 class MealEntry {
   MealEntry({required this.foodId, required this.name, required this.quantity, required this.unit, required this.grams, required this.calories, required this.protein, required this.carbs, required this.fat, required this.type, required this.time});
   final String foodId;
@@ -215,6 +245,15 @@ class AppState extends ChangeNotifier {
   bool shoppingInitialized = false;
   final List<PantryItem> pantryItems = [];
 
+  // Deletion tombstones: id/key -> when it was deleted (UTC). Kept locally
+  // and synced to the cloud so that a deletion made on one device isn't
+  // silently un-done by the union-merge on another device. See
+  // PROJECT_BRIEF.md section 6.5 for the bug this fixes.
+  final Map<String, DateTime> deletedCustomFoodIds = {};
+  final Map<String, DateTime> deletedPantryItemIds = {};
+  final Map<String, DateTime> deletedShoppingItemIds = {};
+  final Map<String, DateTime> deletedMealKeys = {};
+
   static const _storageKey = 'stage10_state_v1';
   static const _backupStorageKey = 'stage10_state_v1_backup';
   static const _oldStorageKey = 'stage9_state_v1';
@@ -317,6 +356,10 @@ class AppState extends ChangeNotifier {
     'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
+    'deletedCustomFoodIds': _encodeTombstoneMap(deletedCustomFoodIds),
+    'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
+    'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
+    'deletedMealKeys': _encodeTombstoneMap(deletedMealKeys),
   };
 
   void _readJson(Map<String,dynamic> j) {
@@ -330,6 +373,10 @@ class AppState extends ChangeNotifier {
     meatDairySeparationEnabled=j['meatDairySeparationEnabled']??meatDairySeparationEnabled;
     meatWaitMinutes=j['meatWaitMinutes']??meatWaitMinutes;
     customFoods..clear()..addAll(((j['customFoods'] as List?)??[]).map((e)=>FoodItem.fromJson(Map<String,dynamic>.from(e))));
+    deletedCustomFoodIds..clear()..addAll(decodeTombstoneMap(j['deletedCustomFoodIds']));
+    deletedPantryItemIds..clear()..addAll(decodeTombstoneMap(j['deletedPantryItemIds']));
+    deletedShoppingItemIds..clear()..addAll(decodeTombstoneMap(j['deletedShoppingItemIds']));
+    deletedMealKeys..clear()..addAll(decodeTombstoneMap(j['deletedMealKeys']));
     primaryGoal=j['primaryGoal']??primaryGoal; activityLevel=j['activityLevel']??activityLevel; workoutDaysPerWeek=j['workoutDaysPerWeek']??workoutDaysPerWeek; eatingStyle=j['eatingStyle']??eatingStyle;
     meals..clear()..addAll(((j['meals'] as List?)??[]).map((e)=>MealEntry.fromJson(Map<String,dynamic>.from(e))));
     weights..clear()..addAll(((j['weights'] as List?)??[]).map((e)=>WeightEntry.fromJson(Map<String,dynamic>.from(e))));
@@ -517,7 +564,11 @@ class AppState extends ChangeNotifier {
     if(category!=null)item.category=category;if(haveAtHome!=null)item.haveAtHome=haveAtHome;
     notifyListeners();_save();
   }
-  void deleteShoppingItem(ShoppingItem item){shoppingItems.remove(item);notifyListeners();_save();}
+  void deleteShoppingItem(ShoppingItem item){
+    shoppingItems.remove(item);
+    deletedShoppingItemIds[item.id] = DateTime.now().toUtc();
+    notifyListeners();_save();
+  }
   void toggleSmartShopping(ShoppingItem item,bool value){item.checked=value;notifyListeners();_save();}
 
   PantryItem? pantryByName(String name) => _pantryByExactName(this, name);
@@ -588,6 +639,7 @@ class AppState extends ChangeNotifier {
 
   void deletePantryItem(PantryItem item) {
     pantryItems.remove(item);
+    deletedPantryItemIds[item.id] = DateTime.now().toUtc();
     notifyListeners();
     _save();
   }
