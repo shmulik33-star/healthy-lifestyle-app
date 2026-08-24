@@ -486,6 +486,7 @@ class CloudSyncService {
     merged['deletedPantryItemIds'] = deletedPantryIds;
     merged['deletedShoppingItemIds'] = deletedShoppingIds;
     merged['deletedMealKeys'] = deletedMeals;
+    merged['deletedCustomFoodIds'] = deletedCustomFoods;
     return merged;
   }
 
