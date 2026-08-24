@@ -8,8 +8,11 @@ import '../../shared/models/food.dart';
 import 'nutrition_label_ai_service.dart';
 
 class AddFoodToCatalogScreen extends StatefulWidget {
-  const AddFoodToCatalogScreen({super.key, required this.state});
+  const AddFoodToCatalogScreen({super.key, required this.state, this.editingFood});
   final AppState state;
+  // When set, the screen edits this existing custom food in place (same id
+  // on save) instead of creating a new one, and offers a delete action.
+  final FoodItem? editingFood;
 
   @override
   State<AddFoodToCatalogScreen> createState() => _AddFoodToCatalogScreenState();
@@ -34,6 +37,31 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   String _aiMessage = '';
   String _aiCode = '';
   double _aiConfidence = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final food = widget.editingFood;
+    if (food == null) return;
+    name.text = food.name;
+    categoryDetail.text = food.categoryDetail;
+    calories.text = _formatNumber(food.caloriesPer100g);
+    protein.text = _formatNumber(food.proteinPer100g);
+    carbs.text = _formatNumber(food.carbsPer100g);
+    fat.text = _formatNumber(food.fatPer100g);
+    category = food.category;
+    kosherStatus = food.kosherStatus;
+    kosherType = food.type;
+    // units holds {customUnitName: grams, 'גרם': 1} — recover the
+    // non-gram entry the user originally defined, if any.
+    final customUnitEntries =
+        food.units.entries.where((entry) => entry.key != 'גרם');
+    if (customUnitEntries.isNotEmpty) {
+      final customUnit = customUnitEntries.first;
+      unitName.text = customUnit.key;
+      unitGrams.text = _formatNumber(customUnit.value);
+    }
+  }
 
   @override
   void dispose() {
@@ -162,7 +190,17 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   Widget build(BuildContext context) {
     final showKosherFields = widget.state.kosherEnabled;
     return Scaffold(
-      appBar: AppBar(title: const Text('הוסף מזון למאגר')),
+      appBar: AppBar(
+        title: Text(widget.editingFood == null ? 'הוסף מזון למאגר' : 'עריכת מזון'),
+        actions: [
+          if (widget.editingFood != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'מחק מזון',
+              onPressed: _confirmDelete,
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -385,7 +423,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
           FilledButton.icon(
             onPressed: _save,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('שמור במאגר'),
+            label: Text(widget.editingFood == null ? 'שמור במאגר' : 'שמור שינויים'),
           ),
         ],
       ),
@@ -420,7 +458,11 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       return;
     }
     final grams = double.tryParse(unitGrams.text.replaceAll(',', '.')) ?? 100;
-    final id = 'custom_${DateTime.now().microsecondsSinceEpoch}';
+    // Editing keeps the same id so cloud sync treats this as an update to
+    // the existing row (see CloudSyncService.syncCustomFoods), not a new
+    // food alongside the old one.
+    final id = widget.editingFood?.id ??
+        'custom_${DateTime.now().microsecondsSinceEpoch}';
     final food = FoodItem(
       id: id,
       name: n,
@@ -441,7 +483,39 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
     );
     widget.state.addCustomFood(food);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$n נוסף למאגר')),
+      SnackBar(
+        content: Text(
+          widget.editingFood == null ? '$n נוסף למאגר' : '$n עודכן',
+        ),
+      ),
+    );
+    Navigator.pop(context);
+  }
+
+  Future<void> _confirmDelete() async {
+    final food = widget.editingFood;
+    if (food == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('למחוק את המזון?'),
+        content: Text('"${food.name}" יימחק מהמאגר האישי שלך בכל המכשירים.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('ביטול'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('מחק'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.state.deleteCustomFood(food);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${food.name} נמחק')),
     );
     Navigator.pop(context);
   }
