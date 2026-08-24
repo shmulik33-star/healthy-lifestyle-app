@@ -168,9 +168,13 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
         ),
       ),
     );
-    // The edited/deleted food already lives in AppState via ChangeNotifier,
-    // so this screen's `results` list (rebuilt from state.allFoods on the
-    // next build) reflects the change automatically — nothing else needed.
+    // This screen holds `state` as a plain constructor param, not through
+    // AppStateScope.of(context), so it never subscribes to notifyListeners()
+    // and won't rebuild on its own when the edit/delete screen changes the
+    // food list. The edit/save itself already persisted correctly — this
+    // just forces the "מאגר המזונות" list to re-read state.allFoods so the
+    // change is visible without leaving and re-entering the screen.
+    if (mounted) setState(() {});
   }
 
   Future<void> _openFood(BuildContext context, FoodItem food) async {
