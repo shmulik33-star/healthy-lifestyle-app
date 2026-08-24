@@ -699,11 +699,14 @@ class CloudSyncService {
     _lastSyncedStateFingerprint = '';
   }
 
-  /// User-created food sync: union by food id, with deletions tracked as
-  /// tombstones so a food removed on one device does not get silently
-  /// re-added by another (see `state.deletedCustomFoodIds`, which is
-  /// merged in as part of the app-state snapshot before this runs — see
-  /// `syncAllNow`).
+  /// User-created food sync. New items sync as a simple union; deletions are
+  /// tracked as tombstones (see `state.deletedCustomFoodIds`); and — the part
+  /// that used to be missing — **edits to an existing food now sync too**,
+  /// resolved by last-writer-wins using `state.customFoodUpdatedAt` (local
+  /// edit times) against each row's own `updated_at` column (cloud edit
+  /// times). Previously an id present on both sides was never touched again
+  /// after its first sync, so an edit on one device silently never reached
+  /// the other. See PROJECT_BRIEF.md section 6.3.
   static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) async {
     final user = currentUser;
     if (user == null) {
@@ -717,6 +720,7 @@ class CloudSyncService {
         .select('food_id,payload,updated_at');
 
     final cloudById = <String, FoodItem>{};
+    final cloudUpdatedAt = <String, DateTime>{};
     for (final raw in response) {
       final row = Map<String, dynamic>.from(raw as Map);
       final payload = row['payload'];
@@ -725,23 +729,47 @@ class CloudSyncService {
         final food = FoodItem.fromJson(Map<String, dynamic>.from(payload));
         if (food.id.trim().isNotEmpty) {
           cloudById[food.id] = food;
+          final ts = DateTime.tryParse(row['updated_at']?.toString() ?? '');
+          if (ts != null) cloudUpdatedAt[food.id] = ts;
         }
       } catch (_) {
         // Ignore one malformed remote row rather than blocking all sync.
       }
     }
 
-    final localIds = localBeforeSync.map((food) => food.id).toSet();
+    final localById = {for (final food in localBeforeSync) food.id: food};
     var downloaded = 0;
+    var edited = 0;
     _applyingRemoteState = true;
     try {
       for (final entry in cloudById.entries) {
-        if (localIds.contains(entry.key)) continue;
+        final id = entry.key;
         // Don't resurrect a food this device (or another, via the merged
         // tombstone set) has already deleted.
-        if (deletedIds.contains(entry.key)) continue;
-        state.addCustomFood(entry.value);
-        downloaded++;
+        if (deletedIds.contains(id)) continue;
+
+        final remoteTs = cloudUpdatedAt[id];
+        if (!localById.containsKey(id)) {
+          // New to this device.
+          state.applyRemoteCustomFood(
+            entry.value,
+            remoteTs ?? DateTime.now().toUtc(),
+          );
+          downloaded++;
+          continue;
+        }
+
+        // Present on both sides: only overwrite the local copy if the cloud
+        // row is genuinely newer than what we last edited or last pulled.
+        // A never-tracked local timestamp (food synced before this fix
+        // shipped) is treated as older than any cloud timestamp, so it
+        // reconciles once and is tracked normally from then on.
+        final localTs = state.customFoodUpdatedAt[id];
+        if (remoteTs != null &&
+            (localTs == null || remoteTs.isAfter(localTs))) {
+          state.applyRemoteCustomFood(entry.value, remoteTs);
+          edited++;
+        }
       }
     } finally {
       _applyingRemoteState = false;
@@ -749,12 +777,23 @@ class CloudSyncService {
 
     final uploads = <Map<String, dynamic>>[];
     for (final food in localBeforeSync) {
-      if (cloudById.containsKey(food.id)) continue;
+      final id = food.id;
+      final remoteTs = cloudUpdatedAt[id];
+      final localTs = state.customFoodUpdatedAt[id];
+      final isNewToCloud = !cloudById.containsKey(id);
+      // Push when the cloud doesn't have it yet, or when our local edit is
+      // strictly newer than the cloud row (the mirror image of the pull
+      // check above — never push a local copy we just overwrote from cloud).
+      final localIsNewer =
+          !isNewToCloud && localTs != null && (remoteTs == null || localTs.isAfter(remoteTs));
+      if (!isNewToCloud && !localIsNewer) continue;
+
       uploads.add({
         'user_id': user.id,
-        'food_id': food.id,
+        'food_id': id,
         'payload': food.toJson(),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'updated_at':
+            (localTs ?? DateTime.now().toUtc()).toIso8601String(),
       });
     }
 
@@ -795,7 +834,7 @@ class CloudSyncService {
 
     return CustomFoodSyncResult(
       uploaded: uploads.length,
-      downloaded: downloaded,
+      downloaded: downloaded + edited,
       total: totalIds.length,
     );
   }
