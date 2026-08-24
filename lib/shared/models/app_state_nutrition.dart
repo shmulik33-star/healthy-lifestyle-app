@@ -81,6 +81,51 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
         existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
   );
   state.customFoods.add(food);
+  // This is the single local entry point for both "create" and "edit" (an
+  // edit calls this with the same id and changed fields), so stamping here
+  // is what lets CloudSyncService.syncCustomFoods tell a genuine local edit
+  // apart from a value just pulled down from the cloud.
+  state.customFoodUpdatedAt[food.id] = DateTime.now().toUtc();
+
+  for (final pantryItem in state.pantryItems) {
+    if (replacedIds.contains(pantryItem.foodId) ||
+        (pantryItem.foodId.isEmpty &&
+            AppState._sameFoodName(pantryItem.name, food.name))) {
+      pantryItem.foodId = food.id;
+      pantryItem.name = food.name;
+      pantryItem.category = food.category;
+    }
+  }
+  state.notifyListeners();
+  state._save();
+}
+
+/// Applies a custom food pulled from the cloud during sync. Same list
+/// replacement as `_nutritionAddCustomFood`, but stamps `customFoodUpdatedAt`
+/// with the cloud row's own `updated_at` instead of `now()` — a pull is not
+/// a new local edit, and stamping it "now" would make it look like one and
+/// bounce straight back up to the cloud on the very next sync cycle.
+void _nutritionApplyRemoteCustomFood(
+  AppState state,
+  FoodItem food,
+  DateTime remoteUpdatedAt,
+) {
+  final replacedIds = state.customFoods
+      .where(
+        (existing) =>
+            existing.id == food.id ||
+            existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
+      )
+      .map((existing) => existing.id)
+      .toSet();
+
+  state.customFoods.removeWhere(
+    (existing) =>
+        existing.id == food.id ||
+        existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
+  );
+  state.customFoods.add(food);
+  state.customFoodUpdatedAt[food.id] = remoteUpdatedAt;
 
   for (final pantryItem in state.pantryItems) {
     if (replacedIds.contains(pantryItem.foodId) ||

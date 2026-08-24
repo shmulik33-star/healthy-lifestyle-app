@@ -254,6 +254,14 @@ class AppState extends ChangeNotifier {
   final Map<String, DateTime> deletedShoppingItemIds = {};
   final Map<String, DateTime> deletedMealKeys = {};
 
+  // Last-known "true" modification time per custom food id — set to `now()`
+  // on every local add/edit, and to the cloud row's own `updated_at` when a
+  // value is pulled down from sync (never `now()` for a pull, or a pulled
+  // value would look like a fresh local edit and immediately bounce back up
+  // next cycle). Used by CloudSyncService.syncCustomFoods for last-writer-
+  // wins conflict resolution on edits — see PROJECT_BRIEF.md 6.3.
+  final Map<String, DateTime> customFoodUpdatedAt = {};
+
   static const _storageKey = 'stage10_state_v1';
   static const _backupStorageKey = 'stage10_state_v1_backup';
   static const _oldStorageKey = 'stage9_state_v1';
@@ -360,6 +368,7 @@ class AppState extends ChangeNotifier {
     'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
     'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
     'deletedMealKeys': _encodeTombstoneMap(deletedMealKeys),
+    'customFoodUpdatedAt': _encodeTombstoneMap(customFoodUpdatedAt),
   };
 
   void _readJson(Map<String,dynamic> j) {
@@ -377,6 +386,7 @@ class AppState extends ChangeNotifier {
     deletedPantryItemIds..clear()..addAll(decodeTombstoneMap(j['deletedPantryItemIds']));
     deletedShoppingItemIds..clear()..addAll(decodeTombstoneMap(j['deletedShoppingItemIds']));
     deletedMealKeys..clear()..addAll(decodeTombstoneMap(j['deletedMealKeys']));
+    customFoodUpdatedAt..clear()..addAll(decodeTombstoneMap(j['customFoodUpdatedAt']));
     primaryGoal=j['primaryGoal']??primaryGoal; activityLevel=j['activityLevel']??activityLevel; workoutDaysPerWeek=j['workoutDaysPerWeek']??workoutDaysPerWeek; eatingStyle=j['eatingStyle']??eatingStyle;
     meals..clear()..addAll(((j['meals'] as List?)??[]).map((e)=>MealEntry.fromJson(Map<String,dynamic>.from(e))));
     weights..clear()..addAll(((j['weights'] as List?)??[]).map((e)=>WeightEntry.fromJson(Map<String,dynamic>.from(e))));
@@ -479,6 +489,8 @@ class AppState extends ChangeNotifier {
   void addFood(FoodItem food,double quantity,String unit) =>
       _nutritionAddFood(this, food, quantity, unit);
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
+  void applyRemoteCustomFood(FoodItem food, DateTime remoteUpdatedAt) =>
+      _nutritionApplyRemoteCustomFood(this, food, remoteUpdatedAt);
   void deleteCustomFood(FoodItem food) => _nutritionDeleteCustomFood(this, food);
 
   // IDs are the source of truth whenever they exist. Name matching is only

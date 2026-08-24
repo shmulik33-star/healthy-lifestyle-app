@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
+import 'add_food_to_catalog_screen.dart';
 
 class SmartNutritionScreen extends StatefulWidget {
   const SmartNutritionScreen({super.key, required this.state});
@@ -122,7 +123,13 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
                     '${food.proteinPer100g.toStringAsFixed(1)} גרם חלבון ל־100 גרם',
                   ),
                   isThreeLine: true,
-                  trailing: const Icon(Icons.chevron_left),
+                  trailing: food.userCreated
+                      ? IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: 'ערוך מזון',
+                          onPressed: () => _editFood(context, food),
+                        )
+                      : const Icon(Icons.chevron_left),
                   onTap: () => _openFood(context, food),
                 ),
               ),
@@ -149,6 +156,25 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
     });
 
     return allowed.take(4).toList();
+  }
+
+  Future<void> _editFood(BuildContext context, FoodItem food) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => AppStateScope(
+          state: widget.state,
+          child: AddFoodToCatalogScreen(state: widget.state, editingFood: food),
+        ),
+      ),
+    );
+    // This screen holds `state` as a plain constructor param, not through
+    // AppStateScope.of(context), so it never subscribes to notifyListeners()
+    // and won't rebuild on its own when the edit/delete screen changes the
+    // food list. The edit/save itself already persisted correctly — this
+    // just forces the "מאגר המזונות" list to re-read state.allFoods so the
+    // change is visible without leaving and re-entering the screen.
+    if (mounted) setState(() {});
   }
 
   Future<void> _openFood(BuildContext context, FoodItem food) async {
