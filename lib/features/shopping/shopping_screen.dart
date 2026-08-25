@@ -40,7 +40,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                 value:item.checked,
                 onChanged:(v)=>state.toggleSmartShopping(item,v??false),
                 title:Text(item.name,style:TextStyle(decoration:item.checked?TextDecoration.lineThrough:null)),
-                subtitle:Text('${_fmt(item.quantity)} ${item.unit}${item.haveAtHome>0?' · בבית: ${_fmt(item.haveAtHome)}':''}'),
+                subtitle:Text('${_fmt(item.quantity)} ${item.unit}${item.haveAtHome>0?' · בבית: ${_fmt(item.haveAtHome)}${item.haveAtHomeOverride?'':' (מהמזווה)'}':''}'),
                 secondary:PopupMenuButton<String>(
                   onSelected:(v){if(v=='edit')_edit(context,state,item:item);if(v=='delete')state.deleteShoppingItem(item);if(v=='why')_why(context,item);},
                   itemBuilder:(_)=>const [
