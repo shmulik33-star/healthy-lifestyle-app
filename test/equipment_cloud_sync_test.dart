@@ -69,6 +69,12 @@ void main() {
   });
 
   test('custom equipment and its tombstones survive a local save/load round-trip', () async {
+    // upsert/delete trigger AppState._save() without awaiting it (same
+    // fire-and-forget pattern as addPantryItem/deletePantryItem). Firing
+    // several of these back-to-back races their writes to the same storage
+    // key — whichever finishes last wins, which isn't necessarily the last
+    // one called. Flushing the microtask queue after each mutation lets each
+    // save land before the next one starts, so they apply in order.
     final state = AppState();
     state.upsertCustomEquipmentItem(
       const CustomEquipmentItem(
@@ -78,18 +84,17 @@ void main() {
         source: 'photo_ai',
       ),
     );
+    await Future<void>.delayed(Duration.zero);
+
     const deletedItem = CustomEquipmentItem(
       id: 'equip-2',
       name: 'מכשיר ישן',
       category: 'אחר',
     );
     state.upsertCustomEquipmentItem(deletedItem);
-    state.deleteCustomEquipmentItem(deletedItem);
+    await Future<void>.delayed(Duration.zero);
 
-    // upsert/delete trigger AppState._save() without awaiting it (same
-    // fire-and-forget pattern as addPantryItem/deletePantryItem). Flush the
-    // microtask queue so that in-flight write has landed in the mocked
-    // SharedPreferences store before we reload from it below.
+    state.deleteCustomEquipmentItem(deletedItem);
     await Future<void>.delayed(Duration.zero);
 
     final reloaded = await AppState.load();
@@ -115,10 +120,41 @@ void main() {
     expect(state.customEquipment.single.id, 'legacy-1');
 
     // A second call (e.g. app restart) must not duplicate the item, and must
-    // not resurrect one the user has since deleted.
+    // not resurrect one the user has since deleted. Guarded by
+    // customEquipmentMigrated, not by "customEquipment is empty" — the list
+    // IS empty again right here, which is exactly the case that must not
+    // trigger a re-import.
     state.deleteCustomEquipmentItem(legacyItem);
     state.migrateLegacyCustomEquipment([legacyItem]);
     expect(state.customEquipment, isEmpty);
+  });
+
+  test(
+      'migrateLegacyCustomEquipment does not resurrect a deleted item across a real app restart',
+      () async {
+    // Same scenario as above, but through an actual local save/load cycle
+    // (shell.dart calls EquipmentStore.load() + migrateLegacyCustomEquipment
+    // fresh on every app start) rather than reusing one in-memory AppState —
+    // this is the scenario the "is empty" heuristic actually broke.
+    final state = AppState();
+    const legacyItem = CustomEquipmentItem(
+      id: 'legacy-1',
+      name: 'קטלבל 12 ק״ג',
+      category: 'קטלבל',
+    );
+    state.migrateLegacyCustomEquipment([legacyItem]);
+    await Future<void>.delayed(Duration.zero);
+
+    state.deleteCustomEquipmentItem(legacyItem);
+    await Future<void>.delayed(Duration.zero);
+
+    // Simulate the next app start: a fresh AppState loaded from local
+    // storage, then shell.dart's migration call fires again with the same
+    // (never-cleared) legacy EquipmentStore contents.
+    final restarted = await AppState.load();
+    restarted.migrateLegacyCustomEquipment([legacyItem]);
+
+    expect(restarted.customEquipment, isEmpty);
   });
 
   test('migrateLegacyCustomEquipment is a no-op when nothing legacy exists', () {

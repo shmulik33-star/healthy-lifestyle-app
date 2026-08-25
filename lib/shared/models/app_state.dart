@@ -329,6 +329,13 @@ class AppState extends ChangeNotifier {
   bool shoppingInitialized = false;
   final List<PantryItem> pantryItems = [];
   final List<CustomEquipmentItem> customEquipment = [];
+  // Local-device-only marker: whether migrateLegacyCustomEquipment has ever
+  // run on this device. NOT part of the cloud sync snapshot — this guards a
+  // one-time local import, not user data. Deliberately not inferred from
+  // "customEquipment is empty", because it would otherwise be empty again
+  // after the user deletes everything post-migration, which would make a
+  // later app start re-import (and resurrect) already-deleted legacy items.
+  bool customEquipmentMigrated = false;
 
   // Deletion tombstones: id/key -> when it was deleted (UTC). Kept locally
   // and synced to the cloud so that a deletion made on one device isn't
@@ -451,6 +458,7 @@ class AppState extends ChangeNotifier {
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
     'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
+    'customEquipmentMigrated':customEquipmentMigrated,
     'deletedCustomFoodIds': _encodeTombstoneMap(deletedCustomFoodIds),
     'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
     'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
@@ -487,6 +495,7 @@ class AppState extends ChangeNotifier {
     shoppingInitialized=j['shoppingInitialized']==true;
     pantryItems..clear()..addAll(((j['pantryItems'] as List?)??[]).map((e)=>PantryItem.fromJson(Map<String,dynamic>.from(e))));
     customEquipment..clear()..addAll(((j['customEquipment'] as List?)??[]).map((e)=>CustomEquipmentItem.fromJson(Map<String,dynamic>.from(e))));
+    customEquipmentMigrated=j['customEquipmentMigrated']==true;
   }
 
   DateTime logicalDayDateAt(DateTime time) {
@@ -771,13 +780,18 @@ class AppState extends ChangeNotifier {
 
   /// One-time import of equipment created before this field existed on
   /// `AppState`, when it lived only in the local-only `EquipmentStore`
-  /// (`stage12_custom_equipment_v1`). Never overwrites: if this device has
-  /// already migrated (or a user has already added cloud-synced equipment),
-  /// `customEquipment` is non-empty and this is a no-op, so a second call
-  /// (e.g. on every app start) can't duplicate or resurrect deleted items.
+  /// (`stage12_custom_equipment_v1`). Guarded by `customEquipmentMigrated`
+  /// (not by "is customEquipment empty") so a second call — e.g. the next
+  /// app start, which reloads the same never-cleared legacy store — can't
+  /// duplicate items or resurrect ones the user has since deleted: once
+  /// migrated, the flag alone blocks every later call, even after the user
+  /// deletes everything and the list is empty again.
   void migrateLegacyCustomEquipment(List<CustomEquipmentItem> legacyItems) {
-    if (customEquipment.isNotEmpty || legacyItems.isEmpty) return;
-    customEquipment.addAll(legacyItems);
+    if (customEquipmentMigrated) return;
+    customEquipmentMigrated = true;
+    if (legacyItems.isNotEmpty) {
+      customEquipment.addAll(legacyItems);
+    }
     notifyListeners();
     _save();
   }
