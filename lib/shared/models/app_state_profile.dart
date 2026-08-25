@@ -123,12 +123,16 @@ extension AppStateCloudSyncBridge on AppState {
         'weights': weights.map((entry) => entry.toJson()).toList(),
         'meals': meals.map((entry) => entry.toJson()).toList(),
         'pantryItems': pantryItems.map((item) => item.toJson()).toList(),
+        'customEquipment':
+            customEquipment.map((item) => item.toJson()).toList(),
         'shoppingItems': shoppingItems.map((item) => item.toJson()).toList(),
         'shoppingChecked': Map<String, bool>.from(shoppingChecked),
         'shoppingInitialized': shoppingInitialized,
         'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
         'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
         'deletedMealKeys': _encodeTombstoneMap(deletedMealKeys),
+        'deletedCustomEquipmentIds':
+            _encodeTombstoneMap(deletedCustomEquipmentIds),
         // Custom foods themselves live in the user_custom_foods table (see
         // CloudSyncService.syncCustomFoods), but the deletion tombstones ride
         // along in this snapshot so they reach every device the same way the
@@ -268,6 +272,17 @@ extension AppStateCloudSyncBridge on AppState {
             ));
     }
 
+    final customEquipmentRaw = data['customEquipment'];
+    if (customEquipmentRaw is List) {
+      customEquipment
+        ..clear()
+        ..addAll(customEquipmentRaw.whereType<Map>().map(
+              (item) => CustomEquipmentItem.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            ));
+    }
+
     final shoppingRaw = data['shoppingItems'];
     if (shoppingRaw is List) {
       shoppingItems
@@ -302,6 +317,9 @@ extension AppStateCloudSyncBridge on AppState {
     deletedCustomFoodIds
       ..clear()
       ..addAll(decodeTombstoneMap(data['deletedCustomFoodIds']));
+    deletedCustomEquipmentIds
+      ..clear()
+      ..addAll(decodeTombstoneMap(data['deletedCustomEquipmentIds']));
 
     generateWeeklyPlan(save: false);
     await _save();

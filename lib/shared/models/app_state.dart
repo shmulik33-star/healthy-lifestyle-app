@@ -169,6 +169,90 @@ class ShoppingItem {
   );
 }
 
+/// User-created equipment item (manual entry or AI photo recognition).
+///
+/// Historically this lived only in a device-local store
+/// (`EquipmentStore`/`stage12_custom_equipment_v1` in
+/// `features/equipment/equipment_item.dart`) that `cloud_sync_service.dart`
+/// never touched, so custom equipment never reached a second device. It now
+/// lives on `AppState` like `PantryItem`/`ShoppingItem` so it rides the same
+/// snapshot + tombstone sync path. See PROJECT_BRIEF.md section 6.6.
+/// `features/equipment/equipment_item.dart` re-exports this class so no
+/// import in feature code needs to change.
+class CustomEquipmentItem {
+  const CustomEquipmentItem({
+    required this.id,
+    required this.name,
+    required this.category,
+    this.categoryDetail = '',
+    this.quantity = 1,
+    this.notes = '',
+    this.available = true,
+    this.source = 'manual',
+  });
+
+  final String id;
+  final String name;
+  final String category;
+  final String categoryDetail;
+  final int quantity;
+  final String notes;
+  final bool available;
+  final String source;
+
+  CustomEquipmentItem copyWith({
+    String? name,
+    String? category,
+    String? categoryDetail,
+    int? quantity,
+    String? notes,
+    bool? available,
+    String? source,
+  }) =>
+      CustomEquipmentItem(
+        id: id,
+        name: name ?? this.name,
+        category: category ?? this.category,
+        categoryDetail: categoryDetail ?? this.categoryDetail,
+        quantity: quantity ?? this.quantity,
+        notes: notes ?? this.notes,
+        available: available ?? this.available,
+        source: source ?? this.source,
+      );
+
+  String get displayCategory =>
+      category == 'אחר' && categoryDetail.trim().isNotEmpty
+          ? 'אחר · ${categoryDetail.trim()}'
+          : category;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'category': category,
+        'categoryDetail': categoryDetail,
+        'quantity': quantity,
+        'notes': notes,
+        'available': available,
+        'source': source,
+      };
+
+  factory CustomEquipmentItem.fromJson(Map<String, dynamic> json) =>
+      CustomEquipmentItem(
+        id: json['id']?.toString() ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
+        name: json['name']?.toString() ?? '',
+        category: json['category']?.toString() ?? 'אחר',
+        categoryDetail: json['categoryDetail']?.toString() ?? '',
+        quantity: ((json['quantity'] as num?) ?? 1)
+            .toInt()
+            .clamp(1, 99)
+            .toInt(),
+        notes: json['notes']?.toString() ?? '',
+        available: json['available'] != false,
+        source: json['source']?.toString() ?? 'manual',
+      );
+}
+
 class WorkoutExercise {
   const WorkoutExercise(this.name,this.sets,this.reps,this.equipment,this.muscleGroup);
   final String name;
@@ -244,6 +328,14 @@ class AppState extends ChangeNotifier {
   final List<ShoppingItem> shoppingItems = [];
   bool shoppingInitialized = false;
   final List<PantryItem> pantryItems = [];
+  final List<CustomEquipmentItem> customEquipment = [];
+  // Local-device-only marker: whether migrateLegacyCustomEquipment has ever
+  // run on this device. NOT part of the cloud sync snapshot — this guards a
+  // one-time local import, not user data. Deliberately not inferred from
+  // "customEquipment is empty", because it would otherwise be empty again
+  // after the user deletes everything post-migration, which would make a
+  // later app start re-import (and resurrect) already-deleted legacy items.
+  bool customEquipmentMigrated = false;
 
   // Deletion tombstones: id/key -> when it was deleted (UTC). Kept locally
   // and synced to the cloud so that a deletion made on one device isn't
@@ -253,6 +345,7 @@ class AppState extends ChangeNotifier {
   final Map<String, DateTime> deletedPantryItemIds = {};
   final Map<String, DateTime> deletedShoppingItemIds = {};
   final Map<String, DateTime> deletedMealKeys = {};
+  final Map<String, DateTime> deletedCustomEquipmentIds = {};
 
   // Last-known "true" modification time per custom food id — set to `now()`
   // on every local add/edit, and to the cloud row's own `updated_at` when a
@@ -364,10 +457,13 @@ class AppState extends ChangeNotifier {
     'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
+    'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
+    'customEquipmentMigrated':customEquipmentMigrated,
     'deletedCustomFoodIds': _encodeTombstoneMap(deletedCustomFoodIds),
     'deletedPantryItemIds': _encodeTombstoneMap(deletedPantryItemIds),
     'deletedShoppingItemIds': _encodeTombstoneMap(deletedShoppingItemIds),
     'deletedMealKeys': _encodeTombstoneMap(deletedMealKeys),
+    'deletedCustomEquipmentIds': _encodeTombstoneMap(deletedCustomEquipmentIds),
     'customFoodUpdatedAt': _encodeTombstoneMap(customFoodUpdatedAt),
   };
 
@@ -386,6 +482,7 @@ class AppState extends ChangeNotifier {
     deletedPantryItemIds..clear()..addAll(decodeTombstoneMap(j['deletedPantryItemIds']));
     deletedShoppingItemIds..clear()..addAll(decodeTombstoneMap(j['deletedShoppingItemIds']));
     deletedMealKeys..clear()..addAll(decodeTombstoneMap(j['deletedMealKeys']));
+    deletedCustomEquipmentIds..clear()..addAll(decodeTombstoneMap(j['deletedCustomEquipmentIds']));
     customFoodUpdatedAt..clear()..addAll(decodeTombstoneMap(j['customFoodUpdatedAt']));
     primaryGoal=j['primaryGoal']??primaryGoal; activityLevel=j['activityLevel']??activityLevel; workoutDaysPerWeek=j['workoutDaysPerWeek']??workoutDaysPerWeek; eatingStyle=j['eatingStyle']??eatingStyle;
     meals..clear()..addAll(((j['meals'] as List?)??[]).map((e)=>MealEntry.fromJson(Map<String,dynamic>.from(e))));
@@ -397,6 +494,8 @@ class AppState extends ChangeNotifier {
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
     shoppingInitialized=j['shoppingInitialized']==true;
     pantryItems..clear()..addAll(((j['pantryItems'] as List?)??[]).map((e)=>PantryItem.fromJson(Map<String,dynamic>.from(e))));
+    customEquipment..clear()..addAll(((j['customEquipment'] as List?)??[]).map((e)=>CustomEquipmentItem.fromJson(Map<String,dynamic>.from(e))));
+    customEquipmentMigrated=j['customEquipmentMigrated']==true;
   }
 
   DateTime logicalDayDateAt(DateTime time) {
@@ -652,6 +751,47 @@ class AppState extends ChangeNotifier {
   void deletePantryItem(PantryItem item) {
     pantryItems.remove(item);
     deletedPantryItemIds[item.id] = DateTime.now().toUtc();
+    notifyListeners();
+    _save();
+  }
+
+  // Custom equipment: added/edited by the user (manually or via AI photo
+  // recognition). Adds a new item by id, or replaces the existing one with
+  // the same id — matching the addPantryItem/updatePantryItem split, but as
+  // a single upsert since the UI editor always has the full replacement item
+  // on hand (see EquipmentScreen).
+  void upsertCustomEquipmentItem(CustomEquipmentItem item) {
+    final index = customEquipment.indexWhere((e) => e.id == item.id);
+    if (index >= 0) {
+      customEquipment[index] = item;
+    } else {
+      customEquipment.add(item);
+    }
+    notifyListeners();
+    _save();
+  }
+
+  void deleteCustomEquipmentItem(CustomEquipmentItem item) {
+    customEquipment.removeWhere((e) => e.id == item.id);
+    deletedCustomEquipmentIds[item.id] = DateTime.now().toUtc();
+    notifyListeners();
+    _save();
+  }
+
+  /// One-time import of equipment created before this field existed on
+  /// `AppState`, when it lived only in the local-only `EquipmentStore`
+  /// (`stage12_custom_equipment_v1`). Guarded by `customEquipmentMigrated`
+  /// (not by "is customEquipment empty") so a second call — e.g. the next
+  /// app start, which reloads the same never-cleared legacy store — can't
+  /// duplicate items or resurrect ones the user has since deleted: once
+  /// migrated, the flag alone blocks every later call, even after the user
+  /// deletes everything and the list is empty again.
+  void migrateLegacyCustomEquipment(List<CustomEquipmentItem> legacyItems) {
+    if (customEquipmentMigrated) return;
+    customEquipmentMigrated = true;
+    if (legacyItems.isNotEmpty) {
+      customEquipment.addAll(legacyItems);
+    }
     notifyListeners();
     _save();
   }
