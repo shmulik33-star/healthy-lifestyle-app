@@ -448,6 +448,10 @@ class CloudSyncService {
       remote['deletedCustomFoodIds'],
       local['deletedCustomFoodIds'],
     );
+    final deletedCustomEquipment = _mergeTombstoneMaps(
+      remote['deletedCustomEquipmentIds'],
+      local['deletedCustomEquipmentIds'],
+    );
 
     merged['weights'] = _mergeListByKey(
       remote['weights'],
@@ -469,6 +473,13 @@ class CloudSyncService {
       preferLocal: false,
       deletedKeys: deletedPantryIds.keys.toSet(),
     );
+    merged['customEquipment'] = _mergeListByKey(
+      remote['customEquipment'],
+      local['customEquipment'],
+      _idKey,
+      preferLocal: false,
+      deletedKeys: deletedCustomEquipment.keys.toSet(),
+    );
     merged['shoppingItems'] = _mergeListByKey(
       remote['shoppingItems'],
       local['shoppingItems'],
@@ -487,6 +498,7 @@ class CloudSyncService {
     merged['deletedShoppingItemIds'] = deletedShoppingIds;
     merged['deletedMealKeys'] = deletedMeals;
     merged['deletedCustomFoodIds'] = deletedCustomFoods;
+    merged['deletedCustomEquipmentIds'] = deletedCustomEquipment;
     return merged;
   }
 
@@ -518,6 +530,10 @@ class CloudSyncService {
       remote['deletedCustomFoodIds'],
       local['deletedCustomFoodIds'],
     );
+    final deletedCustomEquipment = _mergeTombstoneMaps(
+      remote['deletedCustomEquipmentIds'],
+      local['deletedCustomEquipmentIds'],
+    );
 
     merged['weights'] = _mergeListByKey(
       remote['weights'],
@@ -539,6 +555,13 @@ class CloudSyncService {
       preferLocal: true,
       deletedKeys: deletedPantryIds.keys.toSet(),
     );
+    merged['customEquipment'] = _mergeListByKey(
+      remote['customEquipment'],
+      local['customEquipment'],
+      _idKey,
+      preferLocal: true,
+      deletedKeys: deletedCustomEquipment.keys.toSet(),
+    );
     merged['shoppingItems'] = _mergeListByKey(
       remote['shoppingItems'],
       local['shoppingItems'],
@@ -557,6 +580,7 @@ class CloudSyncService {
     merged['deletedShoppingItemIds'] = deletedShoppingIds;
     merged['deletedMealKeys'] = deletedMeals;
     merged['deletedCustomFoodIds'] = deletedCustomFoods;
+    merged['deletedCustomEquipmentIds'] = deletedCustomEquipment;
     return merged;
   }
 

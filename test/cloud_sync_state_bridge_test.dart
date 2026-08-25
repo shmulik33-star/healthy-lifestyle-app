@@ -56,6 +56,14 @@ void main() {
     );
     source.shoppingChecked['מלפפון'] = true;
     source.shoppingInitialized = true;
+    source.upsertCustomEquipmentItem(
+      const CustomEquipmentItem(
+        id: 'equip-1',
+        name: 'קטלבל 16 ק״ג',
+        category: 'קטלבל',
+        source: 'manual',
+      ),
+    );
 
     final payload = source.exportCloudSyncState();
     final restored = AppState();
@@ -82,6 +90,10 @@ void main() {
     expect(restored.shoppingItems.single.checked, isTrue);
     expect(restored.shoppingChecked['מלפפון'], isTrue);
     expect(restored.shoppingInitialized, isTrue);
+
+    expect(restored.customEquipment, hasLength(1));
+    expect(restored.customEquipment.single.id, 'equip-1');
+    expect(restored.customEquipment.single.name, 'קטלבל 16 ק״ג');
   });
 
   test('daily progress cloud bridge merges current day and history safely', () async {

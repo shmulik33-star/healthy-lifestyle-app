@@ -2,82 +2,23 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../shared/models/app_state.dart';
 import '../../shared/storage/app_local_storage.dart';
 
-class CustomEquipmentItem {
-  const CustomEquipmentItem({
-    required this.id,
-    required this.name,
-    required this.category,
-    this.categoryDetail = '',
-    this.quantity = 1,
-    this.notes = '',
-    this.available = true,
-    this.source = 'manual',
-  });
+// `CustomEquipmentItem` now lives on `AppState`
+// (shared/models/app_state.dart) so custom equipment rides the same
+// cloud-sync snapshot + tombstone path as pantry/shopping items — see
+// PROJECT_BRIEF.md section 6.6. This re-export keeps every existing
+// `import '.../equipment_item.dart'` in feature code and tests working
+// unchanged.
+export '../../shared/models/app_state.dart' show CustomEquipmentItem;
 
-  final String id;
-  final String name;
-  final String category;
-  final String categoryDetail;
-  final int quantity;
-  final String notes;
-  final bool available;
-  final String source;
-
-  CustomEquipmentItem copyWith({
-    String? name,
-    String? category,
-    String? categoryDetail,
-    int? quantity,
-    String? notes,
-    bool? available,
-    String? source,
-  }) =>
-      CustomEquipmentItem(
-        id: id,
-        name: name ?? this.name,
-        category: category ?? this.category,
-        categoryDetail: categoryDetail ?? this.categoryDetail,
-        quantity: quantity ?? this.quantity,
-        notes: notes ?? this.notes,
-        available: available ?? this.available,
-        source: source ?? this.source,
-      );
-
-  String get displayCategory =>
-      category == 'אחר' && categoryDetail.trim().isNotEmpty
-          ? 'אחר · ${categoryDetail.trim()}'
-          : category;
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'category': category,
-        'categoryDetail': categoryDetail,
-        'quantity': quantity,
-        'notes': notes,
-        'available': available,
-        'source': source,
-      };
-
-  factory CustomEquipmentItem.fromJson(Map<String, dynamic> json) =>
-      CustomEquipmentItem(
-        id: json['id']?.toString() ??
-            DateTime.now().microsecondsSinceEpoch.toString(),
-        name: json['name']?.toString() ?? '',
-        category: json['category']?.toString() ?? 'אחר',
-        categoryDetail: json['categoryDetail']?.toString() ?? '',
-        quantity: ((json['quantity'] as num?) ?? 1)
-            .toInt()
-            .clamp(1, 99)
-            .toInt(),
-        notes: json['notes']?.toString() ?? '',
-        available: json['available'] != false,
-        source: json['source']?.toString() ?? 'manual',
-      );
-}
-
+/// Legacy device-local store. Kept only so a device that already has custom
+/// equipment saved here (from before this data moved onto `AppState`) can
+/// have it imported once via `AppState.migrateLegacyCustomEquipment` — see
+/// `AppShell.initState` in `lib/app/shell.dart`. Nothing writes to this store
+/// anymore; `EquipmentScreen` reads/writes `AppState.customEquipment`
+/// instead.
 class EquipmentStore {
   static const storageKey = 'stage12_custom_equipment_v1';
   static const backupStorageKey = 'stage12_custom_equipment_v1_backup';

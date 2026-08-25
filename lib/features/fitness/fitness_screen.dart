@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
-import '../equipment/equipment_item.dart';
 import '../equipment/equipment_screen.dart';
 import '../equipment/equipment_workout.dart';
 
@@ -15,19 +14,6 @@ class FitnessScreen extends StatefulWidget {
 
 class _FitnessScreenState extends State<FitnessScreen> {
   final Set<int> _completedExercises = <int>{};
-  List<CustomEquipmentItem> _customEquipment = <CustomEquipmentItem>[];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCustomEquipment();
-  }
-
-  Future<void> _loadCustomEquipment() async {
-    final items = await EquipmentStore.load();
-    if (!mounted) return;
-    setState(() => _customEquipment = items);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,15 +21,16 @@ class _FitnessScreenState extends State<FitnessScreen> {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
+        final customEquipment = state.customEquipment;
         final workout = EquipmentWorkoutBuilder.combine(
           state.todayWorkout,
-          _customEquipment,
+          customEquipment,
         );
         final availableEquipment = <String>[
           ...state.equipment.entries
               .where((entry) => entry.value)
               .map((entry) => entry.key),
-          ..._customEquipment.where((item) => item.available).map((item) => item.name),
+          ...customEquipment.where((item) => item.available).map((item) => item.name),
         ];
         final completedCount = state.workoutCompleted
             ? workout.length
@@ -68,8 +55,11 @@ class _FitnessScreenState extends State<FitnessScreen> {
                   ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () async {
-                    await Navigator.of(context).push<void>(
+                  onPressed: () {
+                    // No manual refresh needed on return: EquipmentScreen
+                    // edits the same shared AppState instance, whose
+                    // notifyListeners already rebuilds this AnimatedBuilder.
+                    Navigator.of(context).push<void>(
                       MaterialPageRoute<void>(
                         builder: (_) => AppStateScope(
                           state: state,
@@ -77,7 +67,6 @@ class _FitnessScreenState extends State<FitnessScreen> {
                         ),
                       ),
                     );
-                    await _loadCustomEquipment();
                   },
                   icon: const Icon(Icons.tune),
                   label: const Text('הציוד שלי'),
@@ -124,10 +113,10 @@ class _FitnessScreenState extends State<FitnessScreen> {
                     Text(
                       'ציוד זמין: ${availableEquipment.isEmpty ? 'ללא ציוד' : availableEquipment.take(6).join(' · ')}',
                     ),
-                    if (_customEquipment.any((item) => item.available)) ...[
+                    if (customEquipment.any((item) => item.available)) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'כולל ${_customEquipment.where((item) => item.available).length} פריטי ציוד שהוספת בעצמך.',
+                        'כולל ${customEquipment.where((item) => item.available).length} פריטי ציוד שהוספת בעצמך.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -256,7 +245,7 @@ class _FitnessScreenState extends State<FitnessScreen> {
     WorkoutExercise exercise,
   ) {
     WorkoutExercise? alt;
-    for (final item in _customEquipment.where((item) => item.available)) {
+    for (final item in state.customEquipment.where((item) => item.available)) {
       final candidate = EquipmentWorkoutBuilder.exerciseFor(item);
       if (candidate != null &&
           candidate.muscleGroup == exercise.muscleGroup &&

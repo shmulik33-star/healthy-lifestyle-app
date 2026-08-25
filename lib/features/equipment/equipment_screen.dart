@@ -13,29 +13,10 @@ class EquipmentScreen extends StatefulWidget {
 }
 
 class _EquipmentScreenState extends State<EquipmentScreen> {
-  List<CustomEquipmentItem> _custom = <CustomEquipmentItem>[];
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCustom();
-  }
-
-  Future<void> _loadCustom() async {
-    final items = await EquipmentStore.load();
-    if (!mounted) return;
-    setState(() {
-      _custom = items;
-      _loading = false;
-    });
-  }
-
-  Future<void> _saveCustom() => EquipmentStore.save(_custom);
-
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final custom = state.customEquipment;
     return Scaffold(
       appBar: AppBar(title: const Text('הציוד שלי')),
       body: AnimatedBuilder(
@@ -92,22 +73,15 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                if (_custom.isNotEmpty)
+                if (custom.isNotEmpty)
                   Text(
-                    '${_custom.where((e) => e.available).length}/${_custom.length} זמין',
+                    '${custom.where((e) => e.available).length}/${custom.length} זמין',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
               ],
             ),
             const SizedBox(height: 6),
-            if (_loading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_custom.isEmpty)
+            if (custom.isEmpty)
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -127,7 +101,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
                 ),
               )
             else
-              ..._custom.map(_customEquipmentCard),
+              ...custom.map(_customEquipmentCard),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: () => Navigator.pop(context),
@@ -221,19 +195,15 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     );
   }
 
-  Future<void> _setAvailable(CustomEquipmentItem item, bool value) async {
-    final index = _custom.indexWhere((e) => e.id == item.id);
-    if (index < 0) return;
-    setState(() => _custom[index] = item.copyWith(available: value));
-    await _saveCustom();
+  void _setAvailable(CustomEquipmentItem item, bool value) {
+    AppStateScope.of(context)
+        .upsertCustomEquipmentItem(item.copyWith(available: value));
   }
 
   Future<void> _addFromPhoto() async {
     final item = await EquipmentPhotoFlow.open(context);
     if (item == null || !mounted) return;
-    setState(() => _custom.add(item));
-    await _saveCustom();
-    if (!mounted) return;
+    AppStateScope.of(context).upsertCustomEquipmentItem(item);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('״${item.name}״ נוסף מהצילום לציוד שלך.')),
     );
@@ -377,15 +347,7 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
     notes.dispose();
 
     if (result == null || !mounted) return;
-    setState(() {
-      final index = _custom.indexWhere((e) => e.id == result.id);
-      if (index >= 0) {
-        _custom[index] = result;
-      } else {
-        _custom.add(result);
-      }
-    });
-    await _saveCustom();
+    AppStateScope.of(context).upsertCustomEquipmentItem(result);
   }
 
   Future<void> _confirmDelete(CustomEquipmentItem item) async {
@@ -407,7 +369,6 @@ class _EquipmentScreenState extends State<EquipmentScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    setState(() => _custom.removeWhere((e) => e.id == item.id));
-    await _saveCustom();
+    AppStateScope.of(context).deleteCustomEquipmentItem(item);
   }
 }

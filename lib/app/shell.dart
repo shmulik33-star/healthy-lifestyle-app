@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../features/coach/coach_screen.dart';
+import '../features/equipment/equipment_item.dart';
 import '../features/fitness/fitness_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/nutrition/nutrition_screen.dart';
@@ -26,9 +27,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    AppState.load().then((loaded) {
+    AppState.load().then((loaded) async {
       if (!mounted) return;
       loaded.ensureCurrentDay();
+      // One-time import of equipment saved before it moved onto AppState
+      // (see PROJECT_BRIEF.md section 6.6). Must run before automatic sync
+      // starts so a first-time migration on this device is included in the
+      // very first sync round instead of waiting a cycle.
+      final legacyEquipment = await EquipmentStore.load();
+      if (!mounted) return;
+      loaded.migrateLegacyCustomEquipment(legacyEquipment);
       CloudSyncService.startAutomaticSync(loaded);
       DailyProgressSyncService.startAutomaticSync(loaded);
       setState(() => state = loaded);
