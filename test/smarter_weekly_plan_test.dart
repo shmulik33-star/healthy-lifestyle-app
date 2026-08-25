@@ -74,6 +74,29 @@ void main() {
     },
   );
 
+  test(
+    'snack variety holds across multiple weeks too, not just breakfast/lunch/dinner',
+    () {
+      final state = AppState()..recentMealKeys.clear();
+
+      state.generateWeeklyPlan(save: false);
+      // Within one week, all 7 days should not need a repeated snack until
+      // every one of the 6 candidates has had a turn.
+      final weekSnacks =
+          state.weeklyPlan.map((d) => d.meals[3].description).toList();
+      expect(weekSnacks.toSet(), hasLength(6));
+
+      // And, like breakfast, the same weekday's snack should keep cycling
+      // across several weeks rather than settling into a fixed pick.
+      final sundaySnacks = <String>[weekSnacks[0]];
+      for (var week = 1; week < 6; week++) {
+        state.generateWeeklyPlan(save: false);
+        sundaySnacks.add(state.weeklyPlan[0].meals[3].description);
+      }
+      expect(sundaySnacks.toSet(), hasLength(6));
+    },
+  );
+
   test('pantry awareness prefers a lunch whose ingredients are already in stock', () {
     final state = AppState()..recentMealKeys.clear();
 

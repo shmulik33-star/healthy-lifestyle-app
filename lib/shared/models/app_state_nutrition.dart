@@ -191,19 +191,19 @@ const _snackShare = 0.10;
 // once a newer generation pushes the list past this size.
 const _recentMealKeysWindow = 7 * 4 * 3;
 
-// IMPORTANT: keep each of breakfasts/lunches/dinnersPareve/dinnersDairy at a
-// length that is NOT a multiple of 7. `_pickPlannedMeal`'s recency tier is a
-// deterministic least-recently-used rotation, so once every candidate in a
-// pool has been used once, the rotation's phase is fixed. If a pool's size
-// divides evenly into 7, that phase realigns with the calendar every single
-// week, and a given weekday ends up with the exact same meal forever (the
-// same symptom this rewrite was meant to fix, just arrived at differently).
-// A pool size that does *not* divide 7 (e.g. 6, not 7 or 14) makes the
-// weekday->meal mapping drift by one slot each week instead, so the full
-// cycle takes lcm(poolSize, 7) days to repeat -- 6 weeks for a 6-meal pool.
-// Verified empirically while building this: a 7-item pool reproduces the
-// identical week every time from week 2 onward; a 6-item pool doesn't repeat
-// a given weekday's meal for 6 full weeks.
+// IMPORTANT: keep each of breakfasts/lunches/dinnersPareve/dinnersDairy/
+// snacks at a length that is NOT a multiple of 7. `_pickPlannedMeal`'s
+// recency tier is a deterministic least-recently-used rotation, so once
+// every candidate in a pool has been used once, the rotation's phase is
+// fixed. If a pool's size divides evenly into 7, that phase realigns with
+// the calendar every single week, and a given weekday ends up with the
+// exact same meal forever (the same symptom this rewrite was meant to fix,
+// just arrived at differently). A pool size that does *not* divide 7 (e.g.
+// 6, not 7 or 14) makes the weekday->meal mapping drift by one slot each
+// week instead, so the full cycle takes lcm(poolSize, 7) days to repeat --
+// 6 weeks for a 6-meal pool. Verified empirically while building this: a
+// 7-item pool reproduces the identical week every time from week 2 onward;
+// a 6-item pool doesn't repeat a given weekday's meal for 6 full weeks.
 
 /// Fraction of a [PlannedMeal.shopping] ingredient list that's already
 /// sitting in the pantry (matched by name the same way the rest of the app
@@ -515,6 +515,46 @@ void _nutritionGenerateWeeklyPlan(AppState state, {bool save = true}) {
       calories: 180,
       protein: 3.7,
       shopping: {'פרי': 1, 'שקדים': 1},
+    ),
+    PlannedMeal(
+      title: 'נשנוש',
+      description: 'יוגורט עשיר בחלבון',
+      type: KosherFoodType.dairy,
+      calories: 72,
+      protein: 10.0,
+      shopping: {'יוגורט עשיר בחלבון': 1},
+    ),
+    PlannedMeal(
+      title: 'נשנוש',
+      description: 'מקלות גזר ומלפפון עם חומוס',
+      type: KosherFoodType.pareve,
+      calories: 80,
+      protein: 3.1,
+      shopping: {'גזר': 1, 'מלפפון': 1, 'חומוס': 1},
+    ),
+    PlannedMeal(
+      title: 'נשנוש',
+      description: 'תפוז וחופן קטן אגוזי מלך',
+      type: KosherFoodType.pareve,
+      calories: 183,
+      protein: 3.9,
+      shopping: {'תפוז': 1, 'אגוזי מלך': 1},
+    ),
+    PlannedMeal(
+      title: 'נשנוש',
+      description: 'קוטג׳ ועגבנייה קטנה',
+      type: KosherFoodType.dairy,
+      calories: 73,
+      protein: 7.3,
+      shopping: {'קוטג׳ 5%': 1, 'עגבניות': 1},
+    ),
+    PlannedMeal(
+      title: 'נשנוש',
+      description: 'פריכיות עם טחינה',
+      type: KosherFoodType.pareve,
+      calories: 97,
+      protein: 2.2,
+      shopping: {'פריכיות אורז': 2, 'טחינה': 1},
     ),
   ];
 
