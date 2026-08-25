@@ -145,6 +145,7 @@ class ShoppingItem {
     this.reason = '',
     this.checked = false,
     this.haveAtHome = 0,
+    this.haveAtHomeOverride = false,
   });
   final String id;
   String name;
@@ -156,9 +157,16 @@ class ShoppingItem {
   bool checked;
   double haveAtHome;
 
+  /// True once the user has manually set [haveAtHome] via the edit dialog.
+  /// While true, the smart list keeps that value instead of recomputing it
+  /// from [AppState.pantryItems] on the next rebuild (see
+  /// `_smartShoppingItemsFor` in app_state_shopping.dart).
+  bool haveAtHomeOverride;
+
   Map<String,dynamic> toJson()=>{
     'id':id,'name':name,'quantity':quantity,'unit':unit,'category':category,
     'source':source,'reason':reason,'checked':checked,'haveAtHome':haveAtHome,
+    'haveAtHomeOverride':haveAtHomeOverride,
   };
   factory ShoppingItem.fromJson(Map<String,dynamic> j)=>ShoppingItem(
     id:j['id']??DateTime.now().microsecondsSinceEpoch.toString(),
@@ -166,6 +174,7 @@ class ShoppingItem {
     unit:j['unit']??'יחידה', category:j['category']??'אחר',
     source:j['source']??'ידני', reason:j['reason']??'',
     checked:j['checked']==true, haveAtHome:(j['haveAtHome']??0).toDouble(),
+    haveAtHomeOverride:j['haveAtHomeOverride']==true,
   );
 }
 
@@ -655,9 +664,16 @@ class AppState extends ChangeNotifier {
 
   void buildSmartShoppingList({bool force=false}) {
     if(shoppingInitialized && !force) return;
+    // Compute the replacement list before clearing: _smartShoppingItemsFor
+    // reads the current shoppingItems (checked state, manual haveAtHome
+    // overrides) to carry them into the rebuilt list, so it must run against
+    // the still-populated list. A `..clear()..addAll(_smartShoppingItemsFor(this))`
+    // cascade evaluates clear() before the addAll argument, which would hand
+    // it an already-empty list.
+    final next = _smartShoppingItemsFor(this);
     shoppingItems
       ..clear()
-      ..addAll(_smartShoppingItemsFor(this));
+      ..addAll(next);
     shoppingInitialized=true;
     notifyListeners();
     _save();
@@ -672,7 +688,8 @@ class AppState extends ChangeNotifier {
   }
   void updateShoppingItem(ShoppingItem item,{String? name,double? quantity,String? unit,String? category,double? haveAtHome}){
     if(name!=null)item.name=name;if(quantity!=null)item.quantity=quantity;if(unit!=null)item.unit=unit;
-    if(category!=null)item.category=category;if(haveAtHome!=null)item.haveAtHome=haveAtHome;
+    if(category!=null)item.category=category;
+    if(haveAtHome!=null){item.haveAtHome=haveAtHome;item.haveAtHomeOverride=true;}
     notifyListeners();_save();
   }
   void deleteShoppingItem(ShoppingItem item){

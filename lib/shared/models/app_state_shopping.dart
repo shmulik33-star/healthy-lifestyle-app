@@ -101,9 +101,58 @@ Map<String, double> _last7DayConsumptionFor(AppState state) {
   return totals;
 }
 
+/// A "how this gets sold" rule used to round a raw need (a count of
+/// servings/portions, or eggs-equivalent — see `_last7DayConsumptionFor`)
+/// up to a realistic purchasable package, and the unit that package is
+/// expressed in. Categories not listed here fall back to [_defaultPackRule]
+/// (round up to the next whole package).
+class _PackRule {
+  const _PackRule(this.unit, this.step, {this.packs});
+  final String unit;
+  final double step;
+  final List<double>? packs;
+
+  double roundUp(double need) {
+    if (packs != null) {
+      final list = packs!;
+      return list.firstWhere(
+        (pack) => pack >= need,
+        orElse: () => ((need / list.first).ceil() * list.first).toDouble(),
+      );
+    }
+    return (need / step).ceil() * step;
+  }
+}
+
+const _defaultPackRule = _PackRule('חבילה', 1);
+
+/// Real-world package sizes by product category. Meat/fish are commonly
+/// sold by weight in half-kilo steps; dairy/beverages are commonly sold by
+/// volume in half-liter steps; eggs are sold in fixed dozen-style cartons.
+/// Everything else just rounds up to the next whole package.
+const _packRulesByCategory = <String, _PackRule>{
+  'ביצים': _PackRule('יחידות', 6, packs: [6, 12, 18, 30]),
+  'בשר ועוף': _PackRule('ק״ג', 0.5),
+  'דגים': _PackRule('ק״ג', 0.5),
+  'מוצרי חלב': _PackRule('ליטר', 0.5),
+  'משקאות': _PackRule('ליטר', 0.5),
+};
+
+/// Sums pantry stock for [name], matching pantry items the same way the
+/// rest of the shopping logic matches food names (case/whitespace
+/// insensitive, with egg-name aliases collapsed).
+double _pantryQuantityFor(AppState state, String name) {
+  var total = 0.0;
+  for (final item in state.pantryItems) {
+    if (AppState._sameFoodName(item.name, name)) total += item.quantity;
+  }
+  return total;
+}
+
 List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
-  final oldHome = <String, double>{
-    for (final item in state.shoppingItems) item.name: item.haveAtHome,
+  final oldOverrides = <String, double>{
+    for (final item in state.shoppingItems)
+      if (item.haveAtHomeOverride) item.name: item.haveAtHome,
   };
   final oldChecked = <String, bool>{
     for (final item in state.shoppingItems) item.name: item.checked,
@@ -118,19 +167,15 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
     final consumed = (consumption[name] ?? 0).toDouble();
     var need = planned > consumed ? planned : consumed;
     final isEggs = AppState._sameFoodName(name, 'ביצים');
+    final category = _shoppingCategoryFor(state, name);
+    final packRule = _packRulesByCategory[category] ?? _defaultPackRule;
 
-    if (isEggs) {
-      need += 2;
-      final packs = <double>[6, 12, 18, 30];
-      need = packs.firstWhere(
-        (pack) => pack >= need,
-        orElse: () => ((need / 6).ceil() * 6).toDouble(),
-      );
-    } else if (need > 0) {
-      need = need.ceilToDouble();
-    }
+    if (isEggs) need += 2;
+    if (need > 0) need = packRule.roundUp(need);
 
-    final home = oldHome[name] ?? 0;
+    final isOverride = oldOverrides.containsKey(name);
+    final home =
+        isOverride ? oldOverrides[name]! : _pantryQuantityFor(state, name);
     final buy = (need - home).clamp(0, double.infinity).toDouble();
     if (buy <= 0 && home > 0) continue;
 
@@ -144,7 +189,11 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
       reasonParts.add('מתוכנן בתפריט הבא: ${_shoppingFormat(planned)}');
     }
     if (home > 0) {
-      reasonParts.add('סימנת שיש בבית: ${_shoppingFormat(home)}');
+      reasonParts.add(
+        isOverride
+            ? 'סימנת שיש בבית: ${_shoppingFormat(home)}'
+            : 'יש במזווה: ${_shoppingFormat(home)}',
+      );
     }
 
     next.add(
@@ -152,12 +201,13 @@ List<ShoppingItem> _smartShoppingItemsFor(AppState state) {
         id: 'smart_${name.hashCode}',
         name: name,
         quantity: buy,
-        unit: isEggs ? 'יחידות' : 'יחידות/מנות',
-        category: _shoppingCategoryFor(state, name),
+        unit: packRule.unit,
+        category: category,
         source: 'חכם',
         reason: reasonParts.join(' · '),
         checked: oldChecked[name] ?? false,
         haveAtHome: home,
+        haveAtHomeOverride: isOverride,
       ),
     );
   }
