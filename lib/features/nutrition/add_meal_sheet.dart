@@ -14,6 +14,7 @@ class _AddMealSheetState extends State<AddMealSheet> {
   FoodItem? food;
   double quantity = 1;
   String? unit;
+  bool fromHome = true;
   final quantityController = TextEditingController(text: '1');
 
   @override
@@ -242,7 +243,17 @@ class _AddMealSheetState extends State<AddMealSheet> {
                   ),
                 ],
               ],
-              const SizedBox(height: 18),
+              const SizedBox(height: 10),
+              CheckboxListTile(
+                key: const Key('meal_from_home_checkbox'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: fromHome,
+                onChanged: (value) => setState(() => fromHome = value ?? true),
+                title: const Text('אכלתי מהבית'),
+                subtitle: const Text('בטל אם אכלת בחוץ / הזמנת — לא ינוכה מהמזווה'),
+              ),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -250,7 +261,12 @@ class _AddMealSheetState extends State<AddMealSheet> {
                   onPressed: current == null || currentUnit == null
                       ? null
                       : () {
-                          state.addFood(current, quantity, currentUnit);
+                          state.addFood(
+                            current,
+                            quantity,
+                            currentUnit,
+                            fromHome: fromHome,
+                          );
                           Navigator.pop(context);
                         },
                   child: const Text('שמור ביומן'),

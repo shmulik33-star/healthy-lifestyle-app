@@ -181,6 +181,7 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
     final state = widget.state;
     var unit = food.units.keys.first;
     var quantity = 1.0;
+    var fromHome = true;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -296,10 +297,28 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        key: const Key('meal_from_home_checkbox'),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: fromHome,
+                        onChanged: (value) =>
+                            setSheetState(() => fromHome = value ?? true),
+                        title: const Text('אכלתי מהבית'),
+                        subtitle: const Text(
+                          'בטל אם אכלת בחוץ / הזמנת — לא ינוכה מהמזווה',
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       FilledButton.icon(
                         onPressed: () {
-                          state.addFood(food, quantity, unit);
+                          state.addFood(
+                            food,
+                            quantity,
+                            unit,
+                            fromHome: fromHome,
+                          );
                           Navigator.pop(sheetContext);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(

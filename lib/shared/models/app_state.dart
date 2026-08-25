@@ -41,7 +41,7 @@ Map<String, String> _encodeTombstoneMap(Map<String, DateTime> map) =>
     map.map((key, value) => MapEntry(key, value.toIso8601String()));
 
 class MealEntry {
-  MealEntry({required this.foodId, required this.name, required this.quantity, required this.unit, required this.grams, required this.calories, required this.protein, required this.carbs, required this.fat, required this.type, required this.time});
+  MealEntry({required this.foodId, required this.name, required this.quantity, required this.unit, required this.grams, required this.calories, required this.protein, required this.carbs, required this.fat, required this.type, required this.time, this.fromHome = true});
   final String foodId;
   final String name;
   final double quantity;
@@ -54,8 +54,15 @@ class MealEntry {
   final KosherFoodType type;
   final DateTime time;
 
-  Map<String,dynamic> toJson() => {'foodId':foodId,'name':name,'quantity':quantity,'unit':unit,'grams':grams,'calories':calories,'protein':protein,'carbs':carbs,'fat':fat,'type':type.name,'time':time.toIso8601String()};
-  factory MealEntry.fromJson(Map<String,dynamic> j) => MealEntry(foodId:j['foodId']??'', name:j['name']??'', quantity:(j['quantity']??1).toDouble(), unit:j['unit']??'יחידה', grams:(j['grams']??0).toDouble(), calories:j['calories']??0, protein:(j['protein']??0).toDouble(), carbs:(j['carbs']??0).toDouble(), fat:(j['fat']??0).toDouble(), type:KosherFoodType.values.firstWhere((e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve), time:DateTime.tryParse(j['time']??'')??DateTime.now());
+  /// Whether this meal was eaten from home-cooked/home-stocked food, as
+  /// opposed to eaten out / ordered in. Only home meals draw down the
+  /// pantry (see `consumeFromPantryByMeal`) — a restaurant meal shouldn't
+  /// silently deplete stock that's still sitting in the kitchen. Defaults to
+  /// true so older records without this field keep their existing behavior.
+  final bool fromHome;
+
+  Map<String,dynamic> toJson() => {'foodId':foodId,'name':name,'quantity':quantity,'unit':unit,'grams':grams,'calories':calories,'protein':protein,'carbs':carbs,'fat':fat,'type':type.name,'time':time.toIso8601String(),'fromHome':fromHome};
+  factory MealEntry.fromJson(Map<String,dynamic> j) => MealEntry(foodId:j['foodId']??'', name:j['name']??'', quantity:(j['quantity']??1).toDouble(), unit:j['unit']??'יחידה', grams:(j['grams']??0).toDouble(), calories:j['calories']??0, protein:(j['protein']??0).toDouble(), carbs:(j['carbs']??0).toDouble(), fat:(j['fat']??0).toDouble(), type:KosherFoodType.values.firstWhere((e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve), time:DateTime.tryParse(j['time']??'')??DateTime.now(), fromHome:j['fromHome']??true);
 }
 
 class WeightEntry {
@@ -585,8 +592,8 @@ class AppState extends ChangeNotifier {
       _kosherFoodAllowedForRecommendations(this, food);
 
   FoodItem foodById(String id) => _nutritionFoodById(this, id);
-  void addFood(FoodItem food,double quantity,String unit) =>
-      _nutritionAddFood(this, food, quantity, unit);
+  void addFood(FoodItem food,double quantity,String unit,{bool fromHome = true}) =>
+      _nutritionAddFood(this, food, quantity, unit, fromHome: fromHome);
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
   void applyRemoteCustomFood(FoodItem food, DateTime remoteUpdatedAt) =>
       _nutritionApplyRemoteCustomFood(this, food, remoteUpdatedAt);
