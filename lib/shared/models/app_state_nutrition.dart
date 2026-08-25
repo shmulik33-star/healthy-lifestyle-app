@@ -42,8 +42,9 @@ void _nutritionAddFood(
   AppState state,
   FoodItem food,
   double quantity,
-  String unit,
-) {
+  String unit, {
+  bool fromHome = true,
+}) {
   state.ensureCurrentDay();
   final grams = food.gramsFor(unit, quantity);
   final entry = MealEntry(
@@ -58,9 +59,10 @@ void _nutritionAddFood(
     fat: food.fatFor(unit, quantity),
     type: food.type,
     time: DateTime.now(),
+    fromHome: fromHome,
   );
   state.meals.add(entry);
-  state.consumeFromPantryByMeal(entry);
+  if (fromHome) state.consumeFromPantryByMeal(entry);
   state.notifyListeners();
   state._save();
 }
