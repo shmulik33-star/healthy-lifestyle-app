@@ -74,19 +74,21 @@ class WeightEntry {
 }
 
 class PlannedMeal {
-  PlannedMeal({required this.title, required this.description, required this.type, required this.calories, required this.shopping});
+  PlannedMeal({required this.title, required this.description, required this.type, required this.calories, required this.shopping, this.protein = 0});
   final String title;
   final String description;
   final KosherFoodType type;
   final int calories;
+  final double protein;
   final Map<String,int> shopping;
 
-  Map<String,dynamic> toJson()=>{'title':title,'description':description,'type':type.name,'calories':calories,'shopping':shopping};
+  Map<String,dynamic> toJson()=>{'title':title,'description':description,'type':type.name,'calories':calories,'protein':protein,'shopping':shopping};
   factory PlannedMeal.fromJson(Map<String,dynamic> j)=>PlannedMeal(
     title:j['title']??'',
     description:j['description']??'',
     type:KosherFoodType.values.firstWhere((e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve),
     calories:j['calories']??0,
+    protein:(j['protein']??0).toDouble(),
     shopping:Map<String,int>.from((j['shopping'] as Map?)??{}),
   );
 }
@@ -340,6 +342,13 @@ class AppState extends ChangeNotifier {
     'משקולות יד':true,'ספסל':true,'Lat Pulldown':true,'Seated Row':true,'Cable Machine':true,'Leg Press':true,'הליכון':true,'TRX':false,'Smith Machine':false,'גומיות התנגדות':false,'מזרן':true
   };
   final List<PlannedDay> weeklyPlan = [];
+  // Descriptions of recently-assigned weekly-plan meals, oldest first,
+  // capped to roughly 3 weeks of slots (see `_recentMealKeysWindow` in
+  // app_state_nutrition.dart). Lets `generateWeeklyPlan` avoid re-picking a
+  // meal that's still in recent rotation instead of the old fixed
+  // `list[i % list.length]` cycle, which handed the same weekday the same
+  // meal forever.
+  final List<String> recentMealKeys = [];
   final Map<String,bool> shoppingChecked = {};
   final List<ShoppingItem> shoppingItems = [];
   bool shoppingInitialized = false;
@@ -470,7 +479,7 @@ class AppState extends ChangeNotifier {
     'customFoods':customFoods.map((e)=>e.toJson()).toList(),
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
     'meals':meals.map((e)=>e.toJson()).toList(),'weights':weights.map((e)=>e.toJson()).toList(),'equipment':equipment,
-    'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'shoppingChecked':shoppingChecked,
+    'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'recentMealKeys':recentMealKeys,'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
     'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
@@ -505,6 +514,7 @@ class AppState extends ChangeNotifier {
     weights..clear()..addAll(((j['weights'] as List?)??[]).map((e)=>WeightEntry.fromJson(Map<String,dynamic>.from(e))));
     if (j['equipment'] is Map) { for (final e in Map<String,dynamic>.from(j['equipment']).entries) { equipment[e.key]=e.value==true; } }
     weeklyPlan..clear()..addAll(((j['weeklyPlan'] as List?)??[]).map((e)=>PlannedDay.fromJson(Map<String,dynamic>.from(e))));
+    recentMealKeys..clear()..addAll(((j['recentMealKeys'] as List?)??[]).map((e)=>e.toString()));
     shoppingChecked.clear();
     if (j['shoppingChecked'] is Map) { for (final e in Map<String,dynamic>.from(j['shoppingChecked']).entries) { shoppingChecked[e.key]=e.value==true; } }
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
