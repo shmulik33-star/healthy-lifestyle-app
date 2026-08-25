@@ -52,6 +52,28 @@ void main() {
     },
   );
 
+  test(
+    'variety holds across multiple weeks, not just within a single round',
+    () {
+      final state = AppState()..recentMealKeys.clear();
+
+      // Each candidate list now has 6 options rather than 2-3, and 6 does
+      // not divide evenly into the 7-day week -- see the comment above
+      // `_recentMealKeysWindow` in app_state_nutrition.dart for why that
+      // matters. Regenerating 6 weeks in a row should cycle a given
+      // weekday's breakfast through every distinct candidate before any of
+      // them repeats, instead of settling back into the same weekly
+      // pattern after the very first round.
+      final sundayBreakfasts = <String>[];
+      for (var week = 0; week < 6; week++) {
+        state.generateWeeklyPlan(save: false);
+        sundayBreakfasts.add(state.weeklyPlan[0].meals[0].description);
+      }
+
+      expect(sundayBreakfasts.toSet(), hasLength(6));
+    },
+  );
+
   test('pantry awareness prefers a lunch whose ingredients are already in stock', () {
     final state = AppState()..recentMealKeys.clear();
 
