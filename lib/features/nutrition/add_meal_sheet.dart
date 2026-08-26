@@ -16,11 +16,33 @@ class _AddMealSheetState extends State<AddMealSheet> {
   String? unit;
   bool fromHome = true;
   final quantityController = TextEditingController(text: '1');
+  final searchController = TextEditingController();
+  final searchFocusNode = FocusNode();
 
   @override
   void dispose() {
     quantityController.dispose();
+    searchController.dispose();
+    searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _applyQuickLogSuggestion(AppState state, QuickLogSuggestion suggestion) {
+    setState(() {
+      food = state.allFoods.firstWhere(
+        (item) => item.id == suggestion.foodId,
+      );
+      unit = suggestion.unit;
+      quantity = suggestion.quantity;
+      quantityController.text = _formatQuantity(suggestion.quantity);
+      fromHome = suggestion.fromHome;
+      searchController.text = suggestion.name;
+    });
+  }
+
+  static String _formatQuantity(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(1);
   }
 
   @override
@@ -51,8 +73,11 @@ class _AddMealSheetState extends State<AddMealSheet> {
               const Text(
                 'התחל להקליד את שם המזון ובחר מההשלמות. מזון חדש מוסיפים בנפרד ל“מאגר המזונות”.',
               ),
+              ..._quickLogSection(state, foods),
               const SizedBox(height: 14),
               Autocomplete<FoodItem>(
+                textEditingController: searchController,
+                focusNode: searchFocusNode,
                 displayStringForOption: (option) => option.name,
                 optionsBuilder: (textEditingValue) =>
                     _searchFoods(foods, textEditingValue.text),
@@ -277,6 +302,58 @@ class _AddMealSheetState extends State<AddMealSheet> {
         ),
       ),
     );
+  }
+
+  List<Widget> _quickLogSection(AppState state, List<FoodItem> foods) {
+    final suggestions = state.quickLogSuggestions(DateTime.now());
+    if (suggestions.isEmpty) return const [];
+    return [
+      const SizedBox(height: 14),
+      Text('תיעוד מהיר', style: Theme.of(context).textTheme.labelLarge),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final suggestion in suggestions)
+            ActionChip(
+              label: Text(
+                '${_quickLogEmoji(foods, suggestion.foodId)} '
+                '${_formatQuantity(suggestion.quantity)} ${suggestion.unit} '
+                '${suggestion.name} · ${suggestion.calories} קל׳',
+              ),
+              onPressed: () => _applyQuickLogSuggestion(state, suggestion),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  static const _categoryEmoji = <String, String>{
+    'בשר ועוף': '🍗',
+    'דגים': '🐟',
+    'ביצים': '🍳',
+    'מוצרי חלב': '🧀',
+    'לחמים ודגנים': '🍞',
+    'קטניות': '🌱',
+    'ירקות': '🥦',
+    'פירות': '🍎',
+    'אגוזים וזרעים': '🥜',
+    'ממרחים ורטבים': '🥄',
+    'חטיפים וממתקים': '🍪',
+    'משקאות': '🥤',
+    'מאפים ומזון מוכן': '🍱',
+    'מזון קפוא': '🧊',
+    'אחר': '🍽️',
+  };
+
+  static String _quickLogEmoji(List<FoodItem> foods, String foodId) {
+    for (final food in foods) {
+      if (food.id == foodId) {
+        return _categoryEmoji[food.category] ?? _categoryEmoji['אחר']!;
+      }
+    }
+    return _categoryEmoji['אחר']!;
   }
 
   Iterable<FoodItem> _searchFoods(List<FoodItem> foods, String rawQuery) {
