@@ -65,6 +65,28 @@ class MealEntry {
   factory MealEntry.fromJson(Map<String,dynamic> j) => MealEntry(foodId:j['foodId']??'', name:j['name']??'', quantity:(j['quantity']??1).toDouble(), unit:j['unit']??'יחידה', grams:(j['grams']??0).toDouble(), calories:j['calories']??0, protein:(j['protein']??0).toDouble(), carbs:(j['carbs']??0).toDouble(), fat:(j['fat']??0).toDouble(), type:KosherFoodType.values.firstWhere((e)=>e.name==j['type'],orElse:()=>KosherFoodType.pareve), time:DateTime.tryParse(j['time']??'')??DateTime.now(), fromHome:j['fromHome']??true);
 }
 
+/// One (food, quantity, unit) combination the user has logged before,
+/// ranked by `AppState.quickLogSuggestions` for the "quick log" chips in
+/// `AddMealSheet`. A pure derived view over `AppState.meals` -- not stored
+/// or synced anywhere itself.
+class QuickLogSuggestion {
+  const QuickLogSuggestion({
+    required this.foodId,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.calories,
+    required this.fromHome,
+  });
+
+  final String foodId;
+  final String name;
+  final double quantity;
+  final String unit;
+  final int calories;
+  final bool fromHome;
+}
+
 class WeightEntry {
   WeightEntry(this.date,this.weight);
   final DateTime date;
@@ -601,6 +623,8 @@ class AppState extends ChangeNotifier {
   double get remainingProtein => _nutritionRemainingProtein(this);
   List<MealEntry> get todayMeals => mealsForDayAt(DateTime.now());
   List<FoodItem> get allFoods => _nutritionAllFoods(this);
+  List<QuickLogSuggestion> quickLogSuggestions(DateTime now) =>
+      _nutritionQuickLogSuggestions(this, now);
 
   DateTime? get lastMeatTime => _kosherLastMeatTime(this);
   DateTime? get dairyAllowedAt => _kosherDairyAllowedAt(this);

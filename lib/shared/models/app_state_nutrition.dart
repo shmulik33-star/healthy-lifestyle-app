@@ -38,6 +38,100 @@ List<FoodItem> _nutritionAllFoods(AppState state) =>
 FoodItem _nutritionFoodById(AppState state, String id) =>
     state.allFoods.firstWhere((food) => food.id == id);
 
+// How far back `_nutritionQuickLogSuggestions` looks when tallying a past
+// (food, quantity, unit) combination's frequency and recency.
+const _quickLogLookbackWindow = Duration(days: 30);
+
+// Max number of quick-log chips `AddMealSheet` shows.
+const _quickLogSuggestionLimit = 8;
+
+/// Running frequency/recency tally for one (foodId, quantity, unit)
+/// combination while `_nutritionQuickLogSuggestions` walks `state.meals`.
+/// `entry` tracks the most recent [MealEntry] seen for the combination, so
+/// its `fromHome` flag reflects how the user *last* ate it.
+class _QuickLogTally {
+  _QuickLogTally(this.entry) : count = 1, lastUsed = entry.time;
+
+  MealEntry entry;
+  int count;
+  DateTime lastUsed;
+}
+
+/// Ranking score for one tallied combination: frequency (count, within the
+/// last 30 days) as the primary signal, plus a same-window recency bonus in
+/// (0, 1] that only matters as a tiebreaker between equally-frequent
+/// combinations -- a combination logged twice always outranks one logged
+/// once, no matter how recent the single logging was.
+double _quickLogScore(_QuickLogTally tally, DateTime now) {
+  final daysSinceLastUsed =
+      now.difference(tally.lastUsed).inHours / 24;
+  final recencyBonus =
+      1.0 - (daysSinceLastUsed / _quickLogLookbackWindow.inDays).clamp(0, 1);
+  return tally.count.toDouble() + recencyBonus;
+}
+
+/// Ranks past (foodId, quantity, unit) combinations from [state.meals] for
+/// the quick-log chips in `AddMealSheet`, most relevant first (see
+/// [_quickLogScore]). Only meals logged within the last 30 days are
+/// considered at all.
+///
+/// A combination referencing a personal food that has since been deleted
+/// (its id no longer in [state.allFoods]) is skipped silently rather than
+/// crashing -- there is no food left to compute its calories or kosher type
+/// from. This intentionally does *not* filter by the user's current kosher
+/// state the way meal recommendations do: it is a record of what was
+/// actually eaten, not a suggestion of what to eat next.
+List<QuickLogSuggestion> _nutritionQuickLogSuggestions(
+  AppState state,
+  DateTime now,
+) {
+  final cutoff = now.subtract(_quickLogLookbackWindow);
+  final foodIds = {for (final food in state.allFoods) food.id};
+
+  final tallies = <String, _QuickLogTally>{};
+  for (final meal in state.meals) {
+    if (meal.time.isBefore(cutoff)) continue;
+    if (!foodIds.contains(meal.foodId)) continue;
+    final key = '${meal.foodId}|${meal.quantity}|${meal.unit}';
+    final existing = tallies[key];
+    if (existing == null) {
+      tallies[key] = _QuickLogTally(meal);
+    } else {
+      existing.count++;
+      if (meal.time.isAfter(existing.lastUsed)) {
+        existing.lastUsed = meal.time;
+        existing.entry = meal;
+      }
+    }
+  }
+
+  final ranked = tallies.values.toList()
+    ..sort((a, b) {
+      final scoreCompare =
+          _quickLogScore(b, now).compareTo(_quickLogScore(a, now));
+      if (scoreCompare != 0) return scoreCompare;
+      final recencyCompare = b.lastUsed.compareTo(a.lastUsed);
+      if (recencyCompare != 0) return recencyCompare;
+      return a.entry.foodId.compareTo(b.entry.foodId);
+    });
+
+  return ranked
+      .take(_quickLogSuggestionLimit)
+      .map((tally) {
+        final entry = tally.entry;
+        final food = state.allFoods.firstWhere((f) => f.id == entry.foodId);
+        return QuickLogSuggestion(
+          foodId: food.id,
+          name: food.name,
+          quantity: entry.quantity,
+          unit: entry.unit,
+          calories: food.caloriesFor(entry.unit, entry.quantity),
+          fromHome: entry.fromHome,
+        );
+      })
+      .toList();
+}
+
 void _nutritionAddFood(
   AppState state,
   FoodItem food,
