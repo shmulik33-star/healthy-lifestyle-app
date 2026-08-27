@@ -248,6 +248,21 @@ void _nutritionDeleteCustomFood(AppState state, FoodItem food) {
   state._save();
 }
 
+/// Marks [food] as disliked or not. A food with no id (shouldn't happen for
+/// anything reachable from the catalog/custom foods, but guards against a
+/// stray placeholder) is silently ignored -- there'd be nothing stable to
+/// key the dislike on.
+void _nutritionSetFoodDisliked(AppState state, FoodItem food, bool disliked) {
+  if (food.id.isEmpty) return;
+  if (disliked) {
+    state.foodDislikes.add(food.id);
+  } else {
+    state.foodDislikes.remove(food.id);
+  }
+  state.notifyListeners();
+  state._save();
+}
+
 void _nutritionRemoveMeal(AppState state, MealEntry meal) {
   state.meals.remove(meal);
   state.deletedMealKeys[mealTombstoneKey(meal)] = DateTime.now().toUtc();

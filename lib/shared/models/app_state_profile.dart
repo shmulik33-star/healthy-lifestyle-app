@@ -119,6 +119,7 @@ extension AppStateCloudSyncBridge on AppState {
           'workoutDaysPerWeek': workoutDaysPerWeek,
           'eatingStyle': eatingStyle,
           'equipment': Map<String, bool>.from(equipment),
+          'foodDislikes': foodDislikes.toList(),
         },
         'weights': weights.map((entry) => entry.toJson()).toList(),
         'meals': meals.map((entry) => entry.toJson()).toList(),
@@ -241,6 +242,12 @@ extension AppStateCloudSyncBridge on AppState {
       if (equipmentRaw is Map) {
         equipment.addAll(Map<String, dynamic>.from(equipmentRaw)
             .map((key, value) => MapEntry(key, value == true)));
+      }
+      final foodDislikesRaw = profile['foodDislikes'];
+      if (foodDislikesRaw is List) {
+        foodDislikes
+          ..clear()
+          ..addAll(foodDislikesRaw.map((e) => e.toString()));
       }
       dailyStateKey = dayKeyAt(DateTime.now());
     }
