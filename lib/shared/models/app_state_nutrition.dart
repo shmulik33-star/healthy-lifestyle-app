@@ -364,9 +364,28 @@ double _plannedMealTargetFit(
 int _lastUsedIndex(PlannedMeal meal, List<String> history) =>
     history.lastIndexOf(meal.description);
 
-/// Picks one meal out of [options] for a single day/slot, applying three
+/// Whether any of [meal]'s shopping-list ingredients (matched by name, the
+/// same way [_plannedMealPantryCoverage] matches ingredients against pantry
+/// stock -- planned-meal ingredients aren't tied to a food ID) is a food the
+/// user has disliked (per [AppState.isFoodDisliked]).
+bool _plannedMealHasDislikedIngredient(AppState state, PlannedMeal meal) {
+  if (state.foodDislikes.isEmpty) return false;
+  final dislikedNames =
+      state.allFoods.where(state.isFoodDisliked).map((food) => food.name);
+  return meal.shopping.keys.any(
+    (ingredient) => dislikedNames.any(
+      (disliked) => AppState._sameFoodName(disliked, ingredient),
+    ),
+  );
+}
+
+/// Picks one meal out of [options] for a single day/slot, applying four
 /// tiers in order — each tier only breaks ties left by the one before it:
 ///
+/// 0. Preference: prefer candidates with no disliked ingredient (per
+///    [_plannedMealHasDislikedIngredient]) -- but only if at least one such
+///    candidate exists; otherwise every option in [options] stays in the
+///    pool, same "never empty the pool" rule the other tiers below follow.
 /// 1. Variety: keep only the candidate(s) that were used longest ago (or
 ///    never used at all) per [_lastUsedIndex].
 /// 2. Pantry awareness: among those, keep only the candidate(s) with the
@@ -386,10 +405,15 @@ PlannedMeal _pickPlannedMeal(
   required double targetCalories,
   required double targetProtein,
 }) {
-  final leastRecentRank = options
+  final undisliked = options
+      .where((meal) => !_plannedMealHasDislikedIngredient(state, meal))
+      .toList();
+  final candidates = undisliked.isNotEmpty ? undisliked : options;
+
+  final leastRecentRank = candidates
       .map((meal) => _lastUsedIndex(meal, history))
       .reduce((a, b) => a < b ? a : b);
-  var pool = options
+  var pool = candidates
       .where((meal) => _lastUsedIndex(meal, history) == leastRecentRank)
       .toList();
 
@@ -749,15 +773,19 @@ bool _foodInPantry(AppState state, FoodItem food) => state.pantryItems.any(
 double _foodProteinEfficiency(FoodItem food) =>
     food.caloriesPer100g <= 0 ? 0 : food.proteinPer100g / food.caloriesPer100g;
 
-/// Ranks the allowed catalog by three tiers, same pattern as
+/// Ranks the allowed catalog by four tiers, same pattern as
 /// `_pickPlannedMeal`'s tiers -- each is a *sort*, not a filter, so even a
 /// pool where every candidate loses every tie (e.g. everything already
-/// eaten today) still produces a full, deterministically-ordered ranking
-/// instead of an empty result.
+/// eaten today, or everything disliked) still produces a full,
+/// deterministically-ordered ranking instead of an empty result.
 ///
-/// 1. Variety: not eaten today (per [_foodEatenToday]) ranks above eaten.
-/// 2. Pantry: in stock (per [_foodInPantry]) ranks above not in stock.
-/// 3. Protein efficiency (per [_foodProteinEfficiency]) as the tiebreaker.
+/// 1. Preference: not disliked (per [AppState.isFoodDisliked]) ranks above
+///    disliked. Deliberately a ranking tier, not a filter on the allowed
+///    pool -- with a 29-item catalog, filtering out disliked foods outright
+///    could combine with kosher restrictions to empty the pool entirely.
+/// 2. Variety: not eaten today (per [_foodEatenToday]) ranks above eaten.
+/// 3. Pantry: in stock (per [_foodInPantry]) ranks above not in stock.
+/// 4. Protein efficiency (per [_foodProteinEfficiency]) as the tiebreaker.
 List<String> _nutritionSmartFoodSuggestions(AppState state) {
   final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
   if (allowed.isEmpty) {
@@ -765,6 +793,11 @@ List<String> _nutritionSmartFoodSuggestions(AppState state) {
   }
 
   allowed.sort((a, b) {
+    final dislikedCompare = state.isFoodDisliked(a) == state.isFoodDisliked(b)
+        ? 0
+        : (state.isFoodDisliked(a) ? 1 : -1);
+    if (dislikedCompare != 0) return dislikedCompare;
+
     final eatenCompare = _foodEatenToday(state, a) == _foodEatenToday(state, b)
         ? 0
         : (_foodEatenToday(state, a) ? 1 : -1);

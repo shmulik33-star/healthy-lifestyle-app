@@ -21,24 +21,29 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  test('disliking a food excludes it from recommendation eligibility', () {
+  test('disliking a food is tracked by isFoodDisliked, and does not affect '
+      'foodAllowedForRecommendations (that stays kosher-only -- a dislike is '
+      'a ranking signal, not a filter, see its docstring)', () {
     final state = AppState();
     final food = _testFood(id: 'test_disliked', name: 'מזון לא אהוב');
     state.addCustomFood(food);
 
     expect(state.foodAllowedForRecommendations(food), isTrue);
+    expect(state.isFoodDisliked(food), isFalse);
 
     state.setFoodDisliked(food, true);
     expect(state.foodDislikes, contains('test_disliked'));
-    expect(state.foodAllowedForRecommendations(food), isFalse);
+    expect(state.isFoodDisliked(food), isTrue);
+    expect(state.foodAllowedForRecommendations(food), isTrue);
 
     state.setFoodDisliked(food, false);
     expect(state.foodDislikes, isNot(contains('test_disliked')));
-    expect(state.foodAllowedForRecommendations(food), isTrue);
+    expect(state.isFoodDisliked(food), isFalse);
   });
 
-  test('a disliked food is never among the smart food suggestions, even when '
-      'it would otherwise rank first on variety', () {
+  test('a disliked food ranks below an otherwise-tied non-disliked food, but '
+      'still appears in the suggestions -- dislike demotes, it does not '
+      'exclude', () {
     final state = AppState();
     // Eating the whole real catalog pushes every real food into the
     // "already eaten today" tier, isolating these two never-eaten custom
@@ -53,8 +58,23 @@ void main() {
     state.addCustomFood(liked);
     state.setFoodDisliked(disliked, true);
 
-    expect(state.smartFoodSuggestions, isNot(contains(disliked.name)));
-    expect(state.smartFoodSuggestions, contains(liked.name));
+    final suggestions = state.smartFoodSuggestions;
+    expect(suggestions.first, liked.name);
+    expect(suggestions, contains(disliked.name));
+  });
+
+  test('smartFoodSuggestions still returns a full ranking, not the empty '
+      'fallback, when every allowed food is disliked', () {
+    final state = AppState();
+    for (final food in state.allFoods) {
+      state.setFoodDisliked(food, true);
+    }
+
+    expect(state.smartFoodSuggestions, hasLength(3));
+    expect(
+      state.smartFoodSuggestions,
+      isNot(contains('לא מצאתי כרגע מזון מתאים לכל ההגדרות')),
+    );
   });
 
   test('setFoodDisliked ignores a food with no id', () {

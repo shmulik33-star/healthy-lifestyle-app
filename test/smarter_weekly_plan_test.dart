@@ -97,6 +97,30 @@ void main() {
     },
   );
 
+  test(
+    'a disliked ingredient makes generateWeeklyPlan skip that meal in favor '
+    'of an alternative, instead of ignoring the dislike (see foodDislikes)',
+    () {
+      final state = AppState()
+        // Same setup as the target-fit test above: this makes
+        // _highProteinBreakfast (whose shopping list includes 'שקדים') the
+        // objectively best target fit, so disliking שקדים is what has to
+        // be the reason it's passed over here, not target fit or variety.
+        ..calorieTarget = 1200
+        ..proteinTarget = 105
+        ..recentMealKeys.clear();
+      final almonds = state.allFoods.firstWhere((food) => food.id == 'almonds');
+      state.setFoodDisliked(almonds, true);
+
+      state.generateWeeklyPlan(save: false);
+
+      expect(
+        state.weeklyPlan[0].meals[0].description,
+        isNot(_highProteinBreakfast),
+      );
+    },
+  );
+
   test('pantry awareness prefers a lunch whose ingredients are already in stock', () {
     final state = AppState()..recentMealKeys.clear();
 
