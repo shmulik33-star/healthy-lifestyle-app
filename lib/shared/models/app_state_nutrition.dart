@@ -708,11 +708,60 @@ void _nutritionGenerateWeeklyPlan(AppState state, {bool save = true}) {
   if (save) state._save();
 }
 
+/// Whether [food] was already logged today, matched by food ID -- the same
+/// precedence pantry matching gives an ID when one is available (see
+/// `_foodInPantry` below and golden rule #6 in CLAUDE.md). A meal entry with
+/// no foodId (e.g. legacy data) never counts as "already eaten" here rather
+/// than risk a false match on name alone.
+bool _foodEatenToday(AppState state, FoodItem food) =>
+    food.id.isNotEmpty && state.todayMeals.any((meal) => meal.foodId == food.id);
+
+/// Whether [food] is in stock in the pantry, ID first and name as a
+/// fallback -- same precedence as `_plannedMealPantryCoverage` and the rest
+/// of the app's pantry/food matching (AppState._sameFoodName).
+bool _foodInPantry(AppState state, FoodItem food) => state.pantryItems.any(
+      (item) =>
+          item.quantity > 0 &&
+          (item.foodId.isNotEmpty && food.id.isNotEmpty
+              ? item.foodId == food.id
+              : AppState._sameFoodName(item.name, food.name)),
+    );
+
+/// Protein grams delivered per calorie. The final tiebreaker in
+/// [_nutritionSmartFoodSuggestions] -- ranking by this instead of raw
+/// proteinPer100g means a suggestion implicitly accounts for the user's
+/// calorie budget, not just "which food has the most protein".
+double _foodProteinEfficiency(FoodItem food) =>
+    food.caloriesPer100g <= 0 ? 0 : food.proteinPer100g / food.caloriesPer100g;
+
+/// Ranks the allowed catalog by three tiers, same pattern as
+/// `_pickPlannedMeal`'s tiers -- each is a *sort*, not a filter, so even a
+/// pool where every candidate loses every tie (e.g. everything already
+/// eaten today) still produces a full, deterministically-ordered ranking
+/// instead of an empty result.
+///
+/// 1. Variety: not eaten today (per [_foodEatenToday]) ranks above eaten.
+/// 2. Pantry: in stock (per [_foodInPantry]) ranks above not in stock.
+/// 3. Protein efficiency (per [_foodProteinEfficiency]) as the tiebreaker.
 List<String> _nutritionSmartFoodSuggestions(AppState state) {
-  final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList()
-    ..sort((a, b) => b.proteinPer100g.compareTo(a.proteinPer100g));
+  final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
   if (allowed.isEmpty) {
     return ['לא מצאתי כרגע מזון מתאים לכל ההגדרות'];
   }
+
+  allowed.sort((a, b) {
+    final eatenCompare = _foodEatenToday(state, a) == _foodEatenToday(state, b)
+        ? 0
+        : (_foodEatenToday(state, a) ? 1 : -1);
+    if (eatenCompare != 0) return eatenCompare;
+
+    final pantryCompare = _foodInPantry(state, a) == _foodInPantry(state, b)
+        ? 0
+        : (_foodInPantry(state, a) ? -1 : 1);
+    if (pantryCompare != 0) return pantryCompare;
+
+    return _foodProteinEfficiency(b).compareTo(_foodProteinEfficiency(a));
+  });
+
   return allowed.take(3).map((food) => food.name).toList();
 }
