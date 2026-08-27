@@ -163,7 +163,6 @@ class PantryScreen extends StatelessWidget {
     final low = TextEditingController(
       text: item == null ? '1' : _fmt(item.lowStockThreshold),
     );
-    var category = item?.category ?? 'אחר';
     final categories = [
       'ירקות ופירות',
       'בשר ועוף',
@@ -175,6 +174,15 @@ class PantryScreen extends StatelessWidget {
       'נשנושים',
       'אחר',
     ];
+    var category =
+        item != null && categories.contains(item.category)
+            ? item.category
+            : 'אחר';
+    final customCategory = TextEditingController(
+      text: item != null && !categories.contains(item.category)
+          ? item.category
+          : '',
+    );
 
     await showDialog<void>(
       context: context,
@@ -224,6 +232,16 @@ class PantryScreen extends StatelessWidget {
                   onChanged: (v) =>
                       setLocal(() => category = v ?? category),
                 ),
+                if (category == 'אחר') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: customCategory,
+                    decoration: const InputDecoration(
+                      labelText: 'שם קטגוריה חדשה',
+                      hintText: 'לדוגמה: ניקיון, טיפוח',
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -242,13 +260,18 @@ class PantryScreen extends StatelessWidget {
                     double.tryParse(low.text.replaceAll(',', '.')) ?? 1;
                 final u =
                     unit.text.trim().isEmpty ? 'יחידות' : unit.text.trim();
+                final customCat = customCategory.text.trim();
+                final finalCategory =
+                    category == 'אחר' && customCat.isNotEmpty
+                        ? customCat
+                        : category;
 
                 if (item == null) {
                   state.addPantryItem(
                     n,
                     q,
                     u,
-                    category,
+                    finalCategory,
                     lowStockThreshold: threshold,
                   );
                 } else {
@@ -257,7 +280,7 @@ class PantryScreen extends StatelessWidget {
                     name: n,
                     quantity: q,
                     unit: u,
-                    category: category,
+                    category: finalCategory,
                     lowStockThreshold: threshold,
                   );
                 }
@@ -274,6 +297,7 @@ class PantryScreen extends StatelessWidget {
     qty.dispose();
     unit.dispose();
     low.dispose();
+    customCategory.dispose();
   }
 
   static String _fmt(double v) =>
