@@ -68,8 +68,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     final qty=TextEditingController(text:item==null?'1':_fmt(item.quantity));
     final home=TextEditingController(text:item==null?'0':_fmt(item.haveAtHome));
     final unit=TextEditingController(text:item?.unit??'יחידות');
-    var category=item?.category??'אחר';
     final categories=['ירקות ופירות','בשר ועוף','דגים','מוצרי חלב','ביצים','מזווה','קפואים','נשנושים','אחר'];
+    var category=item!=null && categories.contains(item.category)?item.category:'אחר';
+    final customCategory=TextEditingController(text:item!=null && !categories.contains(item.category)?item.category:'');
     await showDialog(context:context,builder:(ctx)=>StatefulBuilder(builder:(ctx,setLocal)=>AlertDialog(
       title:Text(item==null?'הוסף פריט':'עריכת פריט'),
       content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
@@ -79,6 +80,10 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
         TextField(controller:home,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'כמה יש בבית')),
         const SizedBox(height:10),
         DropdownButtonFormField<String>(initialValue:category,isExpanded:true,decoration:const InputDecoration(labelText:'קטגוריה'),items:categories.map((x)=>DropdownMenuItem(value:x,child:Text(x))).toList(),onChanged:(v)=>setLocal(()=>category=v??category)),
+        if(category=='אחר')...[
+          const SizedBox(height:10),
+          TextField(controller:customCategory,decoration:const InputDecoration(labelText:'שם קטגוריה חדשה',hintText:'לדוגמה: ניקיון, טיפוח')),
+        ],
       ])),
       actions:[
         TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('ביטול')),
@@ -86,13 +91,15 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           final n=name.text.trim(); if(n.isEmpty)return;
           final q=double.tryParse(qty.text.replaceAll(',','.'))??1;
           final h=double.tryParse(home.text.replaceAll(',','.'))??0;
-          if(item==null){state.addShoppingItem(n,q,unit.text.trim().isEmpty?'יחידות':unit.text.trim(),category);}
-          else{state.updateShoppingItem(item,name:n,quantity:q,unit:unit.text.trim(),category:category,haveAtHome:h);}
+          final customCat=customCategory.text.trim();
+          final finalCategory=category=='אחר' && customCat.isNotEmpty?customCat:category;
+          if(item==null){state.addShoppingItem(n,q,unit.text.trim().isEmpty?'יחידות':unit.text.trim(),finalCategory);}
+          else{state.updateShoppingItem(item,name:n,quantity:q,unit:unit.text.trim(),category:finalCategory,haveAtHome:h);}
           Navigator.pop(ctx);
         },child:const Text('שמור')),
       ],
     )));
-    name.dispose();qty.dispose();home.dispose();unit.dispose();
+    name.dispose();qty.dispose();home.dispose();unit.dispose();customCategory.dispose();
   }
   static String _fmt(double v)=>v==v.roundToDouble()?v.toInt().toString():v.toStringAsFixed(1);
 }
