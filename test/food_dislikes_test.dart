@@ -16,6 +16,17 @@ FoodItem _testFood({required String id, required String name}) => FoodItem(
       units: {'גרם': 1},
     );
 
+/// Overrides `allFoods` to just [_foods], so a ranking tier can be observed
+/// in isolation without the real 29-item catalog (all allowed, all
+/// non-disliked) burying the signal in noise -- same trick as
+/// `_EmptyCatalogAppState` in smart_food_suggestions_test.dart.
+class _FixedCatalogAppState extends AppState {
+  _FixedCatalogAppState(this._foods);
+  final List<FoodItem> _foods;
+  @override
+  List<FoodItem> get allFoods => _foods;
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -44,18 +55,15 @@ void main() {
   test('a disliked food ranks below an otherwise-tied non-disliked food, but '
       'still appears in the suggestions -- dislike demotes, it does not '
       'exclude', () {
-    final state = AppState();
-    // Eating the whole real catalog pushes every real food into the
-    // "already eaten today" tier, isolating these two never-eaten custom
-    // foods as the only tier-1 candidates (same isolation trick as
-    // smart_food_suggestions_test.dart).
-    for (final food in state.allFoods) {
-      state.addFood(food, 1, food.units.keys.first, fromHome: false);
-    }
     final disliked = _testFood(id: 'test_disliked2', name: 'מזון לא אהוב 2');
     final liked = _testFood(id: 'test_liked2', name: 'מזון אהוב 2');
-    state.addCustomFood(disliked);
-    state.addCustomFood(liked);
+    // Only these two foods are in the allowed pool at all here (see
+    // _FixedCatalogAppState) -- with the real 29-item catalog also in the
+    // mix, every one of those real (non-disliked) foods would rank ahead
+    // of `disliked` too, since "not disliked" is the top ranking tier, and
+    // the point being tested -- that a dislike demotes rather than filters
+    // -- would be invisible past the take(3) cutoff.
+    final state = _FixedCatalogAppState([disliked, liked]);
     state.setFoodDisliked(disliked, true);
 
     final suggestions = state.smartFoodSuggestions;
