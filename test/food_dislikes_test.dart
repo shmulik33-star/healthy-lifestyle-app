@@ -76,10 +76,18 @@ void main() {
   });
 
   test('foodDislikes survives a local save/load roundtrip', () async {
+    // addCustomFood/setFoodDisliked trigger AppState._save() without
+    // awaiting it (same fire-and-forget pattern as addPantryItem/
+    // upsertCustomEquipmentItem -- see the equivalent note in
+    // equipment_cloud_sync_test.dart). Flushing the microtask queue after
+    // each mutation lets each save land before the next one starts, so
+    // they apply in order instead of racing the same storage key.
     final state = AppState();
     final food = _testFood(id: 'test_persist', name: 'מזון לבדיקת שמירה');
     state.addCustomFood(food);
+    await Future<void>.delayed(Duration.zero);
     state.setFoodDisliked(food, true);
+    await Future<void>.delayed(Duration.zero);
 
     final reloaded = await AppState.load();
     expect(reloaded.foodDislikes, contains('test_persist'));
