@@ -353,6 +353,12 @@ class AppState extends ChangeNotifier {
   bool meatDairySeparationEnabled = true;
   int meatWaitMinutes = 360;
   final List<FoodItem> customFoods = [];
+  // Food IDs the user has marked as disliked, so AI/smart suggestions never
+  // propose them again. A full-replace set (like `equipment`), not a
+  // tombstoned list -- there's no "delete" to race, only "in the set or
+  // not". Rides along inside the `profile` section of the cloud sync
+  // snapshot for that reason (see AppStateCloudSyncBridge.exportCloudSyncState).
+  final Set<String> foodDislikes = {};
   String primaryGoal = 'ירידה במשקל';
   String activityLevel = 'בינונית';
   int workoutDaysPerWeek = 3;
@@ -499,6 +505,7 @@ class AppState extends ChangeNotifier {
     'dayStartMinutes':dayStartMinutes,'dailyStateKey':dailyStateKey,'dailyHistory':dailyHistory.map((e)=>e.toJson()).toList(),
     'kosherEnabled':kosherEnabled,'meatDairySeparationEnabled':meatDairySeparationEnabled,'meatWaitMinutes':meatWaitMinutes,
     'customFoods':customFoods.map((e)=>e.toJson()).toList(),
+    'foodDislikes':foodDislikes.toList(),
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
     'meals':meals.map((e)=>e.toJson()).toList(),'weights':weights.map((e)=>e.toJson()).toList(),'equipment':equipment,
     'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'recentMealKeys':recentMealKeys,'shoppingChecked':shoppingChecked,
@@ -525,6 +532,7 @@ class AppState extends ChangeNotifier {
     meatDairySeparationEnabled=j['meatDairySeparationEnabled']??meatDairySeparationEnabled;
     meatWaitMinutes=j['meatWaitMinutes']??meatWaitMinutes;
     customFoods..clear()..addAll(((j['customFoods'] as List?)??[]).map((e)=>FoodItem.fromJson(Map<String,dynamic>.from(e))));
+    foodDislikes..clear()..addAll(((j['foodDislikes'] as List?)??[]).map((e)=>e.toString()));
     deletedCustomFoodIds..clear()..addAll(decodeTombstoneMap(j['deletedCustomFoodIds']));
     deletedPantryItemIds..clear()..addAll(decodeTombstoneMap(j['deletedPantryItemIds']));
     deletedShoppingItemIds..clear()..addAll(decodeTombstoneMap(j['deletedShoppingItemIds']));
@@ -632,12 +640,15 @@ class AppState extends ChangeNotifier {
   Duration get dairyRemaining => _kosherDairyRemaining(this);
 
   bool foodAllowedForRecommendations(FoodItem food) =>
-      _kosherFoodAllowedForRecommendations(this, food);
+      _kosherFoodAllowedForRecommendations(this, food) &&
+      !foodDislikes.contains(food.id);
 
   FoodItem foodById(String id) => _nutritionFoodById(this, id);
   void addFood(FoodItem food,double quantity,String unit,{bool fromHome = true}) =>
       _nutritionAddFood(this, food, quantity, unit, fromHome: fromHome);
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
+  void setFoodDisliked(FoodItem food, bool disliked) =>
+      _nutritionSetFoodDisliked(this, food, disliked);
   void applyRemoteCustomFood(FoodItem food, DateTime remoteUpdatedAt) =>
       _nutritionApplyRemoteCustomFood(this, food, remoteUpdatedAt);
   void deleteCustomFood(FoodItem food) => _nutritionDeleteCustomFood(this, food);

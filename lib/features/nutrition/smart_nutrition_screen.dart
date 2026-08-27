@@ -112,28 +112,46 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
               ),
             )
           else
-            ...results.map(
-              (food) => Card(
+            ...results.map((food) {
+              final disliked = state.foodDislikes.contains(food.id);
+              return Card(
                 child: ListTile(
                   title: Text(food.name),
                   subtitle: Text(
                     '${food.category} · ${kosherStatusLabel(food.kosherStatus)}'
-                    '${food.kosherStatus==KosherStatus.kosher?' · ${kosherLabel(food.type)}':''}\n'
+                    '${food.kosherStatus==KosherStatus.kosher?' · ${kosherLabel(food.type)}':''}'
+                    '${disliked ? ' · לא מוצע בהמלצות' : ''}\n'
                     '${food.caloriesPer100g.toStringAsFixed(0)} קל׳ · '
                     '${food.proteinPer100g.toStringAsFixed(1)} גרם חלבון ל־100 גרם',
                   ),
                   isThreeLine: true,
-                  trailing: food.userCreated
-                      ? IconButton(
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        key: Key('food_dislike_${food.id}'),
+                        icon: Icon(
+                          disliked ? Icons.thumb_down : Icons.thumb_down_outlined,
+                        ),
+                        tooltip: disliked
+                            ? 'הסר מרשימת המזונות שלא אוהב'
+                            : 'סמן כמזון שלא אוהב',
+                        onPressed: () => _toggleDislike(food, !disliked),
+                      ),
+                      if (food.userCreated)
+                        IconButton(
                           icon: const Icon(Icons.edit_outlined),
                           tooltip: 'ערוך מזון',
                           onPressed: () => _editFood(context, food),
                         )
-                      : const Icon(Icons.chevron_left),
+                      else
+                        const Icon(Icons.chevron_left),
+                    ],
+                  ),
                   onTap: () => _openFood(context, food),
                 ),
-              ),
-            ),
+              );
+            }),
         ],
       ),
     );
@@ -175,6 +193,14 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
     // just forces the "מאגר המזונות" list to re-read state.allFoods so the
     // change is visible without leaving and re-entering the screen.
     if (mounted) setState(() {});
+  }
+
+  void _toggleDislike(FoodItem food, bool disliked) {
+    widget.state.setFoodDisliked(food, disliked);
+    // Same rebuild workaround as `_editFood`: `state` is a plain constructor
+    // param here, not read through AppStateScope.of(context), so this screen
+    // never rebuilds on its own from notifyListeners().
+    setState(() {});
   }
 
   Future<void> _openFood(BuildContext context, FoodItem food) async {
