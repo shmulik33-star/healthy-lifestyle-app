@@ -6,8 +6,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/app_state.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/food.dart';
 
-const _highProteinBreakfast = 'יוגורט עשיר בחלבון ושקדים';
-const _pargitLunch = 'פרגית, ירקות וקינואה';
+/// Overrides `allFoods` to just [_foods], so a ranking tier can be observed
+/// in isolation without the real 29-item catalog burying the signal in
+/// noise -- same trick as `_FixedCatalogAppState` in food_dislikes_test.dart.
+class _FixedCatalogAppState extends AppState {
+  _FixedCatalogAppState(this._foods);
+  final List<FoodItem> _foods;
+  @override
+  List<FoodItem> get allFoods => _foods;
+}
+
+FoodItem _mainDish({
+  required String id,
+  required String name,
+  required String category,
+  required KosherFoodType type,
+  double caloriesPer100g = 300,
+  double proteinPer100g = 40,
+}) =>
+    FoodItem(
+      id: id,
+      name: name,
+      category: category,
+      type: type,
+      caloriesPer100g: caloriesPer100g,
+      proteinPer100g: proteinPer100g,
+      carbsPer100g: 0,
+      fatPer100g: 5,
+      units: {'גרם': 1},
+    );
 
 void main() {
   setUp(() {
@@ -15,165 +42,254 @@ void main() {
   });
 
   test(
-    'target fit decides between candidates when variety and pantry do not narrow the field',
+    'target fit decides between tied candidates when variety and pantry do '
+    'not narrow the field',
     () {
-      final state = AppState()
-        // 25% of these exactly matches _highProteinBreakfast's 300 kcal /
-        // ~26.3g protein, making it the clear closest-fit breakfast.
-        ..calorieTarget = 1200
-        ..proteinTarget = 105
-        ..recentMealKeys.clear();
+      // Both are "בשר ועוף" (main-dish category) and never used, so tier 0
+      // (dislike) and tier 1 (variety) don't distinguish them, and neither
+      // is in the pantry, so tier 2 doesn't either -- only tier 3 (target
+      // fit) can decide. calorieTarget/proteinTarget are picked so
+      // breakfast's 25% share (see _breakfastShare) exactly matches
+      // closeMatch's own computed calories/protein at its portion size
+      // (300 kcal/100g -> 100g portion at the 300 kcal breakfast anchor,
+      // so 300 kcal + 80 for the fixed veggie side = 380 kcal, 40g protein).
+      final closeMatch = _mainDish(
+        id: 'close',
+        name: 'התאמה קרובה',
+        category: 'בשר ועוף',
+        type: KosherFoodType.meat,
+        caloriesPer100g: 300,
+        proteinPer100g: 40,
+      );
+      final farMatch = _mainDish(
+        id: 'far',
+        name: 'התאמה רחוקה',
+        category: 'בשר ועוף',
+        type: KosherFoodType.meat,
+        caloriesPer100g: 80,
+        proteinPer100g: 8,
+      );
+      final state = _FixedCatalogAppState([closeMatch, farMatch])
+        // AppState's own constructor already auto-generates one plan on
+        // construction (see `AppState()` in app_state.dart), using default
+        // targets against this same 2-item catalog -- without clearing
+        // that out first, its leftover history could let tier 1 (variety)
+        // override tier 3 here instead of leaving target-fit to decide.
+        ..recentMealKeys.clear()
+        ..calorieTarget = 1520
+        ..proteinTarget = 160;
 
       state.generateWeeklyPlan(save: false);
 
-      expect(state.weeklyPlan[0].meals[0].description, _highProteinBreakfast);
+      expect(state.weeklyPlan[0].meals[0].description, contains('התאמה קרובה'));
     },
   );
 
   test(
-    'variety avoids repeating the previous day\'s meal when an alternative exists',
+    "variety avoids repeating the previous day's meal when an alternative "
+    'exists',
     () {
-      final state = AppState()
-        ..calorieTarget = 1200
-        ..proteinTarget = 105
-        ..recentMealKeys.clear();
+      // Identical in every ranking-relevant way, so only tier 1 (variety)
+      // can tell day 1 and day 2 apart: day 1 is a tie (arbitrary but
+      // deterministic), day 2 must differ because day 1's pick is no longer
+      // the least-recently-used candidate.
+      final a = _mainDish(id: 'a', name: 'מאכל א', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final b = _mainDish(id: 'b', name: 'מאכל ב', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final state = _FixedCatalogAppState([a, b])..recentMealKeys.clear();
 
       state.generateWeeklyPlan(save: false);
 
-      // Day 0 is the objectively best target-fit breakfast (see the target
-      // fit test above); day 1 should not repeat it even though it would
-      // still be the best fit, because it was *just* used and the other two
-      // breakfasts are still available alternatives.
-      expect(state.weeklyPlan[0].meals[0].description, _highProteinBreakfast);
       expect(
         state.weeklyPlan[1].meals[0].description,
-        isNot(_highProteinBreakfast),
+        isNot(state.weeklyPlan[0].meals[0].description),
       );
     },
   );
 
   test(
-    'variety holds across multiple weeks, not just within a single round',
+    'variety holds across separate weekly generations too, not just within '
+    'a single week',
     () {
-      final state = AppState()..recentMealKeys.clear();
-
-      // Each candidate list now has 6 options rather than 2-3, and 6 does
-      // not divide evenly into the 7-day week -- see the comment above
-      // `_recentMealKeysWindow` in app_state_nutrition.dart for why that
-      // matters. Regenerating 6 weeks in a row should cycle a given
-      // weekday's breakfast through every distinct candidate before any of
-      // them repeats, instead of settling back into the same weekly
-      // pattern after the very first round.
-      final sundayBreakfasts = <String>[];
-      for (var week = 0; week < 6; week++) {
-        state.generateWeeklyPlan(save: false);
-        sundayBreakfasts.add(state.weeklyPlan[0].meals[0].description);
-      }
-
-      expect(sundayBreakfasts.toSet(), hasLength(6));
-    },
-  );
-
-  test(
-    'snack variety holds across multiple weeks too, not just breakfast/lunch/dinner',
-    () {
-      final state = AppState()..recentMealKeys.clear();
+      // With only 2 candidates, a full week (7 days) alternates a, b, a, b,
+      // ... -- so by the end of week 1 the *most* recently used is whichever
+      // ran on day 7, and the *least* recently used is whichever ran on day
+      // 6. Week 2's Sunday must therefore pick day 6's food, never day 7's
+      // (= week 1 Sunday's) again.
+      final a = _mainDish(id: 'a', name: 'מאכל א', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final b = _mainDish(id: 'b', name: 'מאכל ב', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final state = _FixedCatalogAppState([a, b])..recentMealKeys.clear();
 
       state.generateWeeklyPlan(save: false);
-      // Within one week, all 7 days should not need a repeated snack until
-      // every one of the 6 candidates has had a turn.
-      final weekSnacks =
-          state.weeklyPlan.map((d) => d.meals[3].description).toList();
-      expect(weekSnacks.toSet(), hasLength(6));
+      final week1Sunday = state.weeklyPlan[0].meals[0].description;
+      state.generateWeeklyPlan(save: false);
+      final week2Sunday = state.weeklyPlan[0].meals[0].description;
 
-      // And, like breakfast, the same weekday's snack should keep cycling
-      // across several weeks rather than settling into a fixed pick.
-      final sundaySnacks = <String>[weekSnacks[0]];
-      for (var week = 1; week < 6; week++) {
-        state.generateWeeklyPlan(save: false);
-        sundaySnacks.add(state.weeklyPlan[0].meals[3].description);
-      }
-      expect(sundaySnacks.toSet(), hasLength(6));
+      expect(week2Sunday, isNot(week1Sunday));
     },
   );
 
   test(
-    'a disliked ingredient makes generateWeeklyPlan skip that meal in favor '
-    'of an alternative, instead of ignoring the dislike (see foodDislikes)',
+    'a disliked food is skipped in favor of a liked alternative -- matches '
+    "by the food's real catalog name directly now (the shopping key IS "
+    'food.name), so the old preparation-descriptor mismatch this used to '
+    'need a substring-match workaround for no longer comes up here',
     () {
-      final state = AppState()
-        // Same setup as the target-fit test above: this makes
-        // _highProteinBreakfast (whose shopping list includes 'שקדים') the
-        // objectively best target fit, so disliking שקדים is what has to
-        // be the reason it's passed over here, not target fit or variety.
-        ..calorieTarget = 1200
-        ..proteinTarget = 105
-        ..recentMealKeys.clear();
-      final almonds = state.allFoods.firstWhere((food) => food.id == 'almonds');
-      state.setFoodDisliked(almonds, true);
+      final disliked = _mainDish(id: 'dis', name: 'מנה לא אהובה', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final liked = _mainDish(id: 'lik', name: 'מנה אהובה', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final state = _FixedCatalogAppState([disliked, liked])..recentMealKeys.clear();
+      state.setFoodDisliked(disliked, true);
 
       state.generateWeeklyPlan(save: false);
 
-      expect(
-        state.weeklyPlan[0].meals[0].description,
-        isNot(_highProteinBreakfast),
-      );
+      for (final day in state.weeklyPlan) {
+        expect(day.meals[0].description, isNot(contains('מנה לא אהובה')));
+      }
     },
   );
 
   test(
-    'a disliked ingredient is still matched when the catalog name adds a '
-    'preparation descriptor the shopping key drops (e.g. קינואה מבושלת vs. '
-    'קינואה) -- generateWeeklyPlan skips the meal even though the names are '
-    'not exactly equal',
+    'disliking a real catalog food keeps it out of every day\'s meals for '
+    'the whole week',
     () {
-      final state = AppState()..recentMealKeys.clear();
-      // Stock exactly what the pargit lunch needs -- see the pantry-
-      // awareness test below, where this alone makes it the clear winner.
-      // Disliking קינואה has to be what rules it out here, not pantry
-      // coverage or anything else.
-      state.addPantryItem('פרגית', 1, 'יחידות', 'בשר ועוף');
-      state.addPantryItem('ירקות לסלט', 1, 'יחידות', 'ירקות');
-      state.addPantryItem('קינואה', 1, 'יחידות', 'לחמים ודגנים');
-
+      // קינואה מבושלת's category (לחמים ודגנים) isn't a main-dish category,
+      // so it's only ever a candidate for נשנוש -- but the real catalog has
+      // plenty of other snack candidates, so disliking it should never
+      // force it back in.
+      final state = AppState();
       final quinoa = state.allFoods.firstWhere((food) => food.id == 'quinoa');
       state.setFoodDisliked(quinoa, true);
 
       state.generateWeeklyPlan(save: false);
 
-      expect(state.weeklyPlan[0].meals[1].description, isNot(_pargitLunch));
+      for (final day in state.weeklyPlan) {
+        for (final meal in day.meals) {
+          expect(meal.description, isNot(contains('קינואה')));
+        }
+      }
     },
   );
 
-  test('pantry awareness prefers a lunch whose ingredients are already in stock', () {
-    final state = AppState()..recentMealKeys.clear();
+  test(
+    'pantry awareness prefers a candidate whose ingredients are already in '
+    'stock',
+    () {
+      final stocked = _mainDish(id: 'st', name: 'מלאי קיים', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final notStocked = _mainDish(id: 'ns', name: 'אין מלאי', category: 'בשר ועוף', type: KosherFoodType.meat);
+      final state = _FixedCatalogAppState([stocked, notStocked])..recentMealKeys.clear();
+      state.addPantryItem('מלאי קיים', 1, 'יחידות', 'בשר ועוף');
+      state.addPantryItem('ירקות לסלט', 1, 'יחידות', 'ירקות');
 
-    // Stock exactly what the pargit lunch needs. "ירקות לסלט" also appears
-    // in the other two lunches' shopping lists, so on its own it wouldn't
-    // be decisive -- the win has to come from covering all three ingredients.
-    state.addPantryItem('פרגית', 1, 'יחידות', 'בשר ועוף');
-    state.addPantryItem('ירקות לסלט', 1, 'יחידות', 'ירקות');
-    state.addPantryItem('קינואה', 1, 'יחידות', 'לחמים ודגנים');
+      state.generateWeeklyPlan(save: false);
 
-    state.generateWeeklyPlan(save: false);
+      expect(state.weeklyPlan[0].meals[0].description, contains('מלאי קיים'));
+    },
+  );
 
-    expect(state.weeklyPlan[0].meals[1].description, _pargitLunch);
-  });
+  test(
+    'falls back to any kosher food for a main-dish slot when nothing '
+    'matches the main-dish categories, instead of emptying the pool',
+    () {
+      final onlyVeg = _mainDish(
+        id: 'veg',
+        name: 'ירק בדיקה',
+        category: 'ירקות',
+        type: KosherFoodType.pareve,
+        caloriesPer100g: 30,
+        proteinPer100g: 1,
+      );
+      final state = _FixedCatalogAppState([onlyVeg])..recentMealKeys.clear();
 
-  test('a meat lunch is still always followed by a pareve dinner (kosher rule)', () {
-    final state = AppState();
-    state.generateWeeklyPlan(save: false);
+      state.generateWeeklyPlan(save: false);
 
-    for (final day in state.weeklyPlan) {
-      final lunch = day.meals[1];
-      final dinner = day.meals[2];
-      if (lunch.type == KosherFoodType.meat) {
-        expect(dinner.type, KosherFoodType.pareve, reason: '${day.day}: meat lunch');
-      } else {
-        expect(dinner.type, KosherFoodType.dairy, reason: '${day.day}: non-meat lunch');
+      for (final day in state.weeklyPlan) {
+        expect(day.meals[0].description, contains('ירק בדיקה'));
       }
-    }
-  });
+    },
+  );
+
+  test(
+    'a meat slot blocks dairy for every later slot the same day, not just '
+    "lunch→dinner -- the rule is sequential across the whole day's slot "
+    'order now that any food can anchor any slot',
+    () {
+      final meat = _mainDish(
+        id: 'meat',
+        name: 'בשר בדיקה',
+        category: 'בשר ועוף',
+        type: KosherFoodType.meat,
+        caloriesPer100g: 300,
+        proteinPer100g: 40,
+      );
+      final dairy = _mainDish(
+        id: 'dairy',
+        name: 'חלבי בדיקה',
+        category: 'מוצרי חלב',
+        type: KosherFoodType.dairy,
+        caloriesPer100g: 80,
+        proteinPer100g: 8,
+      );
+      final state = _FixedCatalogAppState([meat, dairy])
+        // See the target-fit test above for why this needs clearing first.
+        ..recentMealKeys.clear()
+        // Chosen so breakfast's target-fit clearly favors meat (see the
+        // target-fit test above for the same math) -- meat has to win day
+        // 1's breakfast deterministically for this test to prove anything.
+        ..calorieTarget = 1520
+        ..proteinTarget = 160;
+
+      state.generateWeeklyPlan(save: false);
+
+      expect(state.weeklyPlan[0].meals[0].type, KosherFoodType.meat);
+      for (final meal in state.weeklyPlan[0].meals) {
+        expect(meal.type, isNot(KosherFoodType.dairy));
+      }
+    },
+  );
+
+  test(
+    'once any slot in a day is meat, no later slot that day is dairy '
+    '(same rule, exercised against the real catalog)',
+    () {
+      final state = AppState();
+      state.generateWeeklyPlan(save: false);
+
+      for (final day in state.weeklyPlan) {
+        var sawMeat = false;
+        for (final meal in day.meals) {
+          if (sawMeat) {
+            expect(
+              meal.type,
+              isNot(KosherFoodType.dairy),
+              reason: '${day.day}: dairy after an earlier meat slot',
+            );
+          }
+          if (meal.type == KosherFoodType.meat) sawMeat = true;
+        }
+      }
+    },
+  );
+
+  test(
+    'the real built-in catalog has enough candidates that a single week '
+    "doesn't repeat a slot's meal -- explicit sanity check that 29 items "
+    'is diverse enough for the dynamic candidate pool (a failure here is a '
+    'catalog-content gap to report, not something to patch around in the '
+    'ranking algorithm)',
+    () {
+      final state = AppState();
+      state.generateWeeklyPlan(save: false);
+
+      for (var slot = 0; slot < 4; slot++) {
+        final descriptions =
+            state.weeklyPlan.map((day) => day.meals[slot].description).toSet();
+        expect(
+          descriptions,
+          hasLength(7),
+          reason: 'slot $slot repeated within a single week',
+        );
+      }
+    },
+  );
 
   test(
     'legacy weekly-plan JSON without protein/recentMealKeys loads with safe defaults',

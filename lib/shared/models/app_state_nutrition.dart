@@ -313,19 +313,137 @@ const _snackShare = 0.10;
 // once a newer generation pushes the list past this size.
 const _recentMealKeysWindow = 7 * 4 * 3;
 
-// IMPORTANT: keep each of breakfasts/lunches/dinnersPareve/dinnersDairy/
-// snacks at a length that is NOT a multiple of 7. `_pickPlannedMeal`'s
-// recency tier is a deterministic least-recently-used rotation, so once
-// every candidate in a pool has been used once, the rotation's phase is
-// fixed. If a pool's size divides evenly into 7, that phase realigns with
-// the calendar every single week, and a given weekday ends up with the
-// exact same meal forever (the same symptom this rewrite was meant to fix,
-// just arrived at differently). A pool size that does *not* divide 7 (e.g.
-// 6, not 7 or 14) makes the weekday->meal mapping drift by one slot each
-// week instead, so the full cycle takes lcm(poolSize, 7) days to repeat --
-// 6 weeks for a 6-meal pool. Verified empirically while building this: a
-// 7-item pool reproduces the identical week every time from week 2 onward;
-// a 6-item pool doesn't repeat a given weekday's meal for 6 full weeks.
+// The "keep the pool size off a multiple of 7" concern from the old
+// hand-written meal lists doesn't apply anymore: the candidate pool below
+// is built fresh from the user's real food catalog (built-in + custom) on
+// every call, not a fixed hard-coded list, so its size already varies with
+// what's actually in the catalog instead of being pinned at a specific
+// count that could accidentally divide 7 evenly.
+
+// Categories whose foods can anchor a "main dish" for בוקר/צהריים/ערב --
+// chosen by inspecting foodCatalog's actual categories rather than a raw
+// proteinPer100g threshold, which would have let odd candidates like
+// שקדים (21g/100g) or לחם מלא (13g/100g) show up as a "main dish" on their
+// own. נשנוש intentionally applies no such narrowing at all -- any food is
+// a valid snack candidate, matching how varied the old snacks list already
+// was (fruit, dairy, veg sticks, nuts...).
+const _mainDishCategories = {
+  'בשר ועוף',
+  'דגים',
+  'ביצים',
+  'מוצרי חלב',
+  'קטניות',
+};
+
+// Calorie anchor used to size a synthesized main dish's portion, weighted
+// by the food's own calorie density instead of a flat gram amount -- a
+// flat portion would give a wildly oversized "snack" for something
+// calorie-dense like שקדים/שמן זית (150g of almonds alone is ~870 kcal) and
+// a wildly undersized one for something calorie-light. Clamped to a sane
+// grams range on both ends so an extreme density doesn't produce an
+// unrealistic portion either.
+const _slotCalorieAnchor = {
+  'בוקר': 300.0,
+  'צהריים': 450.0,
+  'ערב': 350.0,
+  'נשנוש': 100.0,
+};
+const _minPortionGrams = 10.0;
+const _maxPortionGrams = 350.0;
+
+double _mainDishPortionGrams(FoodItem food, String slotTitle) {
+  final anchor = _slotCalorieAnchor[slotTitle] ?? 200.0;
+  if (food.caloriesPer100g <= 0) return _minPortionGrams;
+  final grams = anchor / food.caloriesPer100g * 100;
+  return grams.clamp(_minPortionGrams, _maxPortionGrams).toDouble();
+}
+
+// Fixed "veggie side" text appended to every בוקר/צהריים/ערב description --
+// a constant phrase, not a second selection algorithm choosing a specific
+// side dish. נשנוש gets no side at all, matching how standalone most of the
+// old static snacks already were.
+String _weeklyPlanSideText(String slotTitle) => switch (slotTitle) {
+      'בוקר' => 'וסלט ירקות',
+      'נשנוש' => '',
+      _ => 'ירקות וסלט', // צהריים / ערב
+    };
+
+// Fixed calorie contribution of the veggie side above -- not computed from
+// a real FoodItem since the side is a fixed phrase, not a chosen
+// ingredient. Small on purpose, just enough to keep the target-fit tier in
+// `_pickPlannedMeal` meaningful.
+const _sideCalories = 80;
+const _sideShoppingKey = 'ירקות לסלט';
+
+/// Synthesizes a [PlannedMeal] for [slotTitle] anchored on [food] -- the
+/// weekly-plan equivalent of one hand-written template from the old static
+/// lists, but built from a real catalog food so `type` reflects the food's
+/// actual kosher classification and `shopping` uses the food's real name
+/// (which is also why `_plannedMealHasDislikedIngredient` and
+/// `_plannedMealPantryCoverage` now match better than they did against the
+/// old hand-typed shopping strings).
+PlannedMeal _syntheticPlannedMeal(FoodItem food, String slotTitle) {
+  final side = _weeklyPlanSideText(slotTitle);
+  final grams = _mainDishPortionGrams(food, slotTitle);
+  final calories = (food.caloriesPer100g * grams / 100).round() +
+      (side.isEmpty ? 0 : _sideCalories);
+  final protein = food.proteinPer100g * grams / 100;
+  return PlannedMeal(
+    title: slotTitle,
+    description: side.isEmpty ? food.name : '${food.name}, $side',
+    type: food.type,
+    calories: calories,
+    protein: protein,
+    shopping: {
+      food.name: 1,
+      if (side.isNotEmpty) _sideShoppingKey: 1,
+    },
+  );
+}
+
+/// Builds the candidate pool for one weekly-plan slot straight from the
+/// user's real food catalog (built-in + custom), instead of a hand-written
+/// list of meal templates. Applies these narrowings in strict priority
+/// order, each one only if it doesn't empty the pool entirely -- kosher
+/// constraints always win over "is this a sensible main dish" (see the PR
+/// description's "never empty the pool" rule, same principle
+/// `_pickPlannedMeal`'s tiers already follow):
+///
+/// 1. Only `KosherStatus.kosher` foods -- an auto-generated plan should
+///    never suggest a food whose kosher status isn't the known-safe one.
+///    Falls back to every food only in the degenerate case where literally
+///    none are marked kosher (shouldn't happen with the real catalog).
+/// 2. [excludeType], when given, drops that KosherFoodType -- used to keep
+///    dairy out of every slot for the rest of a day that already had a
+///    meat slot earlier (see the per-day loop in
+///    `_nutritionGenerateWeeklyPlan`). This is a hard rule; it only gets
+///    relaxed if it would otherwise empty the pool.
+/// 3. For בוקר/צהריים/ערב: prefer [_mainDishCategories] -- but again only
+///    when that doesn't empty the pool. נשנוש never applies this at all.
+List<PlannedMeal> _weeklyPlanCandidates(
+  AppState state,
+  String slotTitle, {
+  KosherFoodType? excludeType,
+}) {
+  final kosherFoods = state.allFoods
+      .where((food) => food.kosherStatus == KosherStatus.kosher)
+      .toList();
+  final kosherBase = kosherFoods.isNotEmpty ? kosherFoods : state.allFoods;
+
+  final typeAllowed = excludeType == null
+      ? kosherBase
+      : kosherBase.where((food) => food.type != excludeType).toList();
+  final pool = typeAllowed.isNotEmpty ? typeAllowed : kosherBase;
+
+  if (slotTitle == 'נשנוש') {
+    return pool.map((food) => _syntheticPlannedMeal(food, slotTitle)).toList();
+  }
+
+  final mainDishes =
+      pool.where((food) => _mainDishCategories.contains(food.category)).toList();
+  final finalPool = mainDishes.isNotEmpty ? mainDishes : pool;
+  return finalPool.map((food) => _syntheticPlannedMeal(food, slotTitle)).toList();
+}
 
 /// Fraction of a [PlannedMeal.shopping] ingredient list that's already
 /// sitting in the pantry (matched by name the same way the rest of the app
@@ -465,261 +583,20 @@ PlannedMeal _pickPlannedMeal(
 
 void _nutritionGenerateWeeklyPlan(AppState state, {bool save = true}) {
   final days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-  // Protein values below are computed from the real per-100g figures in
-  // `foodCatalog`, for a realistic serving of each listed ingredient (e.g.
-  // 2 eggs at 50g/egg, a salad portion at ~120g/"כוס", tahini at 15g/"כף")
-  // — not estimated by hand. See the "Protein values" note in this PR's
-  // description for the full per-meal breakdown.
-  final breakfasts = [
-    PlannedMeal(
-      title: 'בוקר',
-      description: '2 ביצים, סלט וטחינה',
-      type: KosherFoodType.pareve,
-      calories: 360,
-      protein: 16.9,
-      shopping: {'ביצים': 2, 'ירקות לסלט': 2, 'טחינה': 1},
-    ),
-    PlannedMeal(
-      title: 'בוקר',
-      description: 'יוגורט עשיר בחלבון ושקדים',
-      type: KosherFoodType.dairy,
-      calories: 300,
-      protein: 26.3,
-      shopping: {'יוגורט עשיר בחלבון': 1, 'שקדים': 1},
-    ),
-    PlannedMeal(
-      title: 'בוקר',
-      description: 'קוטג׳, ירקות ופרוסת לחם מלא',
-      type: KosherFoodType.dairy,
-      calories: 340,
-      protein: 24.7,
-      shopping: {'קוטג׳ 5%': 1, 'ירקות לסלט': 2, 'לחם מלא': 2},
-    ),
-    PlannedMeal(
-      title: 'בוקר',
-      description: 'גבינה צהובה, פרוסות לחם ופלפל',
-      type: KosherFoodType.dairy,
-      calories: 297,
-      protein: 22.9,
-      shopping: {'גבינה צהובה': 1, 'לחם מלא': 2, 'פלפל': 1},
-    ),
-    PlannedMeal(
-      title: 'בוקר',
-      description: 'חביתת 2 ביצים, עגבנייה ופרוסת לחם',
-      type: KosherFoodType.pareve,
-      calories: 239,
-      protein: 18.0,
-      shopping: {'ביצים': 2, 'עגבניות': 1, 'לחם מלא': 1},
-    ),
-    PlannedMeal(
-      title: 'בוקר',
-      description: 'יוגורט, בננה ואגוזי מלך',
-      type: KosherFoodType.dairy,
-      calories: 349,
-      protein: 23.6,
-      shopping: {'יוגורט עשיר בחלבון': 1, 'בננה': 1, 'אגוזי מלך': 1},
-    ),
-  ];
-  final lunches = [
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'חזה עוף, סלט גדול וכף טחינה',
-      type: KosherFoodType.meat,
-      calories: 550,
-      protein: 50.4,
-      shopping: {'חזה עוף': 1, 'ירקות לסלט': 4, 'טחינה': 1},
-    ),
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'פרגית, ירקות וקינואה',
-      type: KosherFoodType.meat,
-      calories: 620,
-      protein: 49.0,
-      shopping: {'פרגית': 1, 'ירקות לסלט': 3, 'קינואה': 1},
-    ),
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'סלמון, ירקות ועדשים',
-      type: KosherFoodType.pareve,
-      calories: 560,
-      protein: 52.7,
-      shopping: {'סלמון': 1, 'ירקות לסלט': 3, 'עדשים': 1},
-    ),
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'בקר רזה, אורז ופלפל',
-      type: KosherFoodType.meat,
-      calories: 553,
-      protein: 43.3,
-      shopping: {'בקר רזה': 1, 'אורז': 1, 'פלפל': 1},
-    ),
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'טונה, חומוס וסלט גדול',
-      type: KosherFoodType.pareve,
-      calories: 260,
-      protein: 34.7,
-      shopping: {'טונה במים': 1, 'חומוס': 1, 'ירקות לסלט': 3},
-    ),
-    PlannedMeal(
-      title: 'צהריים',
-      description: 'סלט גדול עם גבינה צהובה ולחם מלא',
-      type: KosherFoodType.dairy,
-      calories: 398,
-      protein: 27.5,
-      shopping: {'ירקות לסלט': 4, 'גבינה צהובה': 1, 'לחם מלא': 2},
-    ),
-  ];
-  final dinnersPareve = [
-    PlannedMeal(
-      title: 'ערב',
-      description: 'טונה, ביצה וסלט גדול',
-      type: KosherFoodType.pareve,
-      calories: 410,
-      protein: 39.8,
-      shopping: {'טונה במים': 1, 'ביצים': 1, 'ירקות לסלט': 3},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'טופו מוקפץ עם ירקות',
-      type: KosherFoodType.pareve,
-      calories: 420,
-      protein: 30.2,
-      shopping: {'טופו': 1, 'ירקות לסלט': 3},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'ביצים, אבוקדו וירקות',
-      type: KosherFoodType.pareve,
-      calories: 430,
-      protein: 18.1,
-      shopping: {'ביצים': 2, 'אבוקדו': 1, 'ירקות לסלט': 2},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'סלמון, קינואה וירקות',
-      type: KosherFoodType.pareve,
-      calories: 600,
-      protein: 41.0,
-      shopping: {'סלמון': 1, 'קינואה': 1, 'ירקות לסלט': 2},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'עדשים, אורז וירקות',
-      type: KosherFoodType.pareve,
-      calories: 408,
-      protein: 23.3,
-      shopping: {'עדשים': 1, 'אורז': 1, 'ירקות לסלט': 2},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'טונה, חומוס וירקות חתוכים',
-      type: KosherFoodType.pareve,
-      calories: 234,
-      protein: 33.7,
-      shopping: {'טונה במים': 1, 'חומוס': 1, 'עגבניות': 1, 'מלפפון': 1},
-    ),
-  ];
-  final dinnersDairy = [
-    PlannedMeal(
-      title: 'ערב',
-      description: 'קוטג׳, סלט ופרוסת לחם מלא',
-      type: KosherFoodType.dairy,
-      calories: 390,
-      protein: 26.2,
-      shopping: {'קוטג׳ 5%': 1, 'ירקות לסלט': 3, 'לחם מלא': 2},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'יוגורט עשיר בחלבון, פרי ושקדים',
-      type: KosherFoodType.dairy,
-      calories: 360,
-      protein: 26.8,
-      shopping: {'יוגורט עשיר בחלבון': 1, 'תפוח': 1, 'שקדים': 1},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'גבינה צהובה, סלט ופרוסות לחם מלא',
-      type: KosherFoodType.dairy,
-      calories: 350,
-      protein: 25.4,
-      shopping: {'גבינה צהובה': 1, 'ירקות לסלט': 2, 'לחם מלא': 2},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'קוטג׳, תפוז ואגוזי מלך',
-      type: KosherFoodType.dairy,
-      calories: 306,
-      protein: 17.6,
-      shopping: {'קוטג׳ 5%': 1, 'תפוז': 1, 'אגוזי מלך': 1},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'יוגורט, פריכיות וגזר',
-      type: KosherFoodType.dairy,
-      calories: 243,
-      protein: 22.1,
-      shopping: {'יוגורט עשיר בחלבון': 1, 'פריכיות אורז': 2, 'גזר': 1},
-    ),
-    PlannedMeal(
-      title: 'ערב',
-      description: 'קוטג׳, עגבנייה, מלפפון ופריכיות',
-      type: KosherFoodType.dairy,
-      calories: 233,
-      protein: 17.1,
-      shopping: {'קוטג׳ 5%': 1, 'עגבניות': 1, 'מלפפון': 1, 'פריכיות אורז': 2},
-    ),
-  ];
-  final snacks = [
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'פרי + חופן קטן של שקדים',
-      type: KosherFoodType.pareve,
-      calories: 180,
-      protein: 3.7,
-      shopping: {'פרי': 1, 'שקדים': 1},
-    ),
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'יוגורט עשיר בחלבון',
-      type: KosherFoodType.dairy,
-      calories: 72,
-      protein: 10.0,
-      shopping: {'יוגורט עשיר בחלבון': 1},
-    ),
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'מקלות גזר ומלפפון עם חומוס',
-      type: KosherFoodType.pareve,
-      calories: 80,
-      protein: 3.1,
-      shopping: {'גזר': 1, 'מלפפון': 1, 'חומוס': 1},
-    ),
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'תפוז וחופן קטן אגוזי מלך',
-      type: KosherFoodType.pareve,
-      calories: 183,
-      protein: 3.9,
-      shopping: {'תפוז': 1, 'אגוזי מלך': 1},
-    ),
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'קוטג׳ ועגבנייה קטנה',
-      type: KosherFoodType.dairy,
-      calories: 73,
-      protein: 7.3,
-      shopping: {'קוטג׳ 5%': 1, 'עגבניות': 1},
-    ),
-    PlannedMeal(
-      title: 'נשנוש',
-      description: 'פריכיות עם טחינה',
-      type: KosherFoodType.pareve,
-      calories: 97,
-      protein: 2.2,
-      shopping: {'פריכיות אורז': 2, 'טחינה': 1},
-    ),
-  ];
+
+  // The real, shipped `foodCatalog` is never empty, so this can't happen in
+  // the app itself -- but `_weeklyPlanCandidates` now derives every slot's
+  // pool from `state.allFoods`, and `_pickPlannedMeal` requires a non-empty
+  // list by design (see its docstring), so a genuinely empty catalog (e.g.
+  // a test double overriding `allFoods` to simulate one) would otherwise
+  // crash deep in `_pickPlannedMeal`'s `.reduce()` instead of just leaving
+  // the plan empty.
+  if (state.allFoods.isEmpty) {
+    state.weeklyPlan.clear();
+    state.notifyListeners();
+    if (save) state._save();
+    return;
+  }
 
   final targetCalories = state.calorieTarget.toDouble();
   final targetProtein = state.proteinTarget.toDouble();
@@ -730,34 +607,46 @@ void _nutritionGenerateWeeklyPlan(AppState state, {bool save = true}) {
 
   state.weeklyPlan.clear();
   for (var i = 0; i < days.length; i++) {
+    // Kosher rule, generalized beyond just צהריים→ערב now that any food can
+    // anchor any slot: once a slot earlier *today* lands on meat, every
+    // later slot today (in בוקר→צהריים→ערב→נשנוש order) is barred from
+    // dairy -- never reset back once set, and never relaxed except as the
+    // absolute last resort inside `_weeklyPlanCandidates` itself if it
+    // would otherwise empty a slot's pool entirely.
+    KosherFoodType? excludeType;
+
     final breakfast = _pickPlannedMeal(
       state,
-      breakfasts,
+      _weeklyPlanCandidates(state, 'בוקר', excludeType: excludeType),
       history,
       targetCalories: targetCalories * _breakfastShare,
       targetProtein: targetProtein * _breakfastShare,
     );
+    if (breakfast.type == KosherFoodType.meat) {
+      excludeType = KosherFoodType.dairy;
+    }
+
     final lunch = _pickPlannedMeal(
       state,
-      lunches,
+      _weeklyPlanCandidates(state, 'צהריים', excludeType: excludeType),
       history,
       targetCalories: targetCalories * _lunchShare,
       targetProtein: targetProtein * _lunchShare,
     );
-    // Kosher rule (unchanged from before): a meat lunch must be followed by
-    // a pareve dinner, never a dairy one.
-    final dinnerOptions =
-        lunch.type == KosherFoodType.meat ? dinnersPareve : dinnersDairy;
+    if (lunch.type == KosherFoodType.meat) excludeType = KosherFoodType.dairy;
+
     final dinner = _pickPlannedMeal(
       state,
-      dinnerOptions,
+      _weeklyPlanCandidates(state, 'ערב', excludeType: excludeType),
       history,
       targetCalories: targetCalories * _dinnerShare,
       targetProtein: targetProtein * _dinnerShare,
     );
+    if (dinner.type == KosherFoodType.meat) excludeType = KosherFoodType.dairy;
+
     final snack = _pickPlannedMeal(
       state,
-      snacks,
+      _weeklyPlanCandidates(state, 'נשנוש', excludeType: excludeType),
       history,
       targetCalories: targetCalories * _snackShare,
       targetProtein: targetProtein * _snackShare,
