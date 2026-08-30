@@ -640,8 +640,15 @@ class AppState extends ChangeNotifier {
   Duration get dairyRemaining => _kosherDairyRemaining(this);
 
   bool foodAllowedForRecommendations(FoodItem food) =>
-      _kosherFoodAllowedForRecommendations(this, food) &&
-      !foodDislikes.contains(food.id);
+      _kosherFoodAllowedForRecommendations(this, food);
+
+  // A disliked food is a ranking signal, not a filter -- see the "not eaten
+  // today" / "in pantry" tiers in _nutritionSmartFoodSuggestions and
+  // smart_nutrition_screen._recommendations, which rank by this instead of
+  // excluding on it. A hard filter here could empty out the whole allowed
+  // pool (only 29 catalog items) once enough foods are disliked, on top of
+  // whatever kosher restrictions already apply.
+  bool isFoodDisliked(FoodItem food) => foodDislikes.contains(food.id);
 
   FoodItem foodById(String id) => _nutritionFoodById(this, id);
   void addFood(FoodItem food,double quantity,String unit,{bool fromHome = true}) =>

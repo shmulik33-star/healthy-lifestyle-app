@@ -120,7 +120,7 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
                   subtitle: Text(
                     '${food.category} · ${kosherStatusLabel(food.kosherStatus)}'
                     '${food.kosherStatus==KosherStatus.kosher?' · ${kosherLabel(food.type)}':''}'
-                    '${disliked ? ' · לא מוצע בהמלצות' : ''}\n'
+                    '${disliked ? ' · מדורג נמוך יותר בהמלצות' : ''}\n'
                     '${food.caloriesPer100g.toStringAsFixed(0)} קל׳ · '
                     '${food.proteinPer100g.toStringAsFixed(1)} גרם חלבון ל־100 גרם',
                   ),
@@ -161,6 +161,15 @@ class _SmartNutritionScreenState extends State<SmartNutritionScreen> {
     final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
 
     allowed.sort((a, b) {
+      // Preference is a ranking tier, not a filter on `allowed` above -- see
+      // AppState.foodAllowedForRecommendations's docstring. A disliked food
+      // ranks below an otherwise-equal one, but still shows up if nothing
+      // better is available.
+      final dislikedCompare = state.isFoodDisliked(a) == state.isFoodDisliked(b)
+          ? 0
+          : (state.isFoodDisliked(a) ? 1 : -1);
+      if (dislikedCompare != 0) return dislikedCompare;
+
       double score(FoodItem f) {
         var value = f.proteinPer100g * 5;
         if (state.remainingProtein > 30) value += f.proteinPer100g * 3;

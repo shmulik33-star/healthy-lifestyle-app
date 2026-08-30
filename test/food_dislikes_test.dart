@@ -16,45 +16,73 @@ FoodItem _testFood({required String id, required String name}) => FoodItem(
       units: {'גרם': 1},
     );
 
+/// Overrides `allFoods` to just [_foods], so a ranking tier can be observed
+/// in isolation without the real 29-item catalog (all allowed, all
+/// non-disliked) burying the signal in noise -- same trick as
+/// `_EmptyCatalogAppState` in smart_food_suggestions_test.dart.
+class _FixedCatalogAppState extends AppState {
+  _FixedCatalogAppState(this._foods);
+  final List<FoodItem> _foods;
+  @override
+  List<FoodItem> get allFoods => _foods;
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  test('disliking a food excludes it from recommendation eligibility', () {
+  test('disliking a food is tracked by isFoodDisliked, and does not affect '
+      'foodAllowedForRecommendations (that stays kosher-only -- a dislike is '
+      'a ranking signal, not a filter, see its docstring)', () {
     final state = AppState();
     final food = _testFood(id: 'test_disliked', name: 'מזון לא אהוב');
     state.addCustomFood(food);
 
     expect(state.foodAllowedForRecommendations(food), isTrue);
+    expect(state.isFoodDisliked(food), isFalse);
 
     state.setFoodDisliked(food, true);
     expect(state.foodDislikes, contains('test_disliked'));
-    expect(state.foodAllowedForRecommendations(food), isFalse);
+    expect(state.isFoodDisliked(food), isTrue);
+    expect(state.foodAllowedForRecommendations(food), isTrue);
 
     state.setFoodDisliked(food, false);
     expect(state.foodDislikes, isNot(contains('test_disliked')));
-    expect(state.foodAllowedForRecommendations(food), isTrue);
+    expect(state.isFoodDisliked(food), isFalse);
   });
 
-  test('a disliked food is never among the smart food suggestions, even when '
-      'it would otherwise rank first on variety', () {
-    final state = AppState();
-    // Eating the whole real catalog pushes every real food into the
-    // "already eaten today" tier, isolating these two never-eaten custom
-    // foods as the only tier-1 candidates (same isolation trick as
-    // smart_food_suggestions_test.dart).
-    for (final food in state.allFoods) {
-      state.addFood(food, 1, food.units.keys.first, fromHome: false);
-    }
+  test('a disliked food ranks below an otherwise-tied non-disliked food, but '
+      'still appears in the suggestions -- dislike demotes, it does not '
+      'exclude', () {
     final disliked = _testFood(id: 'test_disliked2', name: 'מזון לא אהוב 2');
     final liked = _testFood(id: 'test_liked2', name: 'מזון אהוב 2');
-    state.addCustomFood(disliked);
-    state.addCustomFood(liked);
+    // Only these two foods are in the allowed pool at all here (see
+    // _FixedCatalogAppState) -- with the real 29-item catalog also in the
+    // mix, every one of those real (non-disliked) foods would rank ahead
+    // of `disliked` too, since "not disliked" is the top ranking tier, and
+    // the point being tested -- that a dislike demotes rather than filters
+    // -- would be invisible past the take(3) cutoff.
+    final state = _FixedCatalogAppState([disliked, liked]);
     state.setFoodDisliked(disliked, true);
 
-    expect(state.smartFoodSuggestions, isNot(contains(disliked.name)));
-    expect(state.smartFoodSuggestions, contains(liked.name));
+    final suggestions = state.smartFoodSuggestions;
+    expect(suggestions.first, liked.name);
+    expect(suggestions, contains(disliked.name));
+  });
+
+  test('smartFoodSuggestions still returns a full ranking, not the empty '
+      'fallback, when every allowed food is disliked', () {
+    final state = AppState();
+    for (final food in state.allFoods) {
+      state.setFoodDisliked(food, true);
+    }
+
+    expect(state.smartFoodSuggestions, hasLength(3));
+    expect(
+      state.smartFoodSuggestions,
+      isNot(contains('לא מצאתי כרגע מזון מתאים לכל ההגדרות')),
+    );
   });
 
   test('setFoodDisliked ignores a food with no id', () {
