@@ -9,6 +9,18 @@ import 'add_food_to_meal_sheet.dart';
 import 'barcode_scanner_screen.dart';
 import 'open_food_facts_service.dart';
 
+/// How the barcode-scan option gets a barcode back. The real implementation
+/// pushes [BarcodeScannerScreen] (a live camera); tests substitute a
+/// function that hands back a barcode directly, so the pop -> scan ->
+/// continue-navigating sequence in [QuickAddFoodSheet._scanBarcode] itself
+/// gets exercised without needing real camera hardware.
+typedef BarcodeScan = Future<String?> Function(NavigatorState navigator);
+
+Future<String?> _pushBarcodeScanner(NavigatorState navigator) =>
+    navigator.push<String>(
+      MaterialPageRoute<String>(builder: (_) => const BarcodeScannerScreen()),
+    );
+
 /// Unified "quick add" entry point for getting a packaged food into the
 /// catalog fast, instead of the full 9-field manual form.
 ///
@@ -17,9 +29,14 @@ import 'open_food_facts_service.dart';
 /// capture / free-text lookup by appending another `_QuickAddOptionTile`
 /// here -- no redesign of the entry point itself.
 class QuickAddFoodSheet extends StatelessWidget {
-  const QuickAddFoodSheet({super.key, required this.state});
+  const QuickAddFoodSheet({
+    super.key,
+    required this.state,
+    this.scanBarcode = _pushBarcodeScanner,
+  });
 
   final AppState state;
+  final BarcodeScan scanBarcode;
 
   static Future<void> show(BuildContext context, AppState state) {
     return showModalBottomSheet<void>(
@@ -58,35 +75,37 @@ class QuickAddFoodSheet extends StatelessWidget {
   }
 
   Future<void> _scanBarcode(BuildContext context, AppState state) async {
-    // Close this sheet before pushing the scanner, rather than stacking a
-    // full-screen camera route on top of a modal sheet.
-    Navigator.pop(context);
-    final barcode = await Navigator.push<String>(
-      context,
-      MaterialPageRoute<String>(builder: (_) => const BarcodeScannerScreen()),
-    );
-    if (barcode == null || barcode.isEmpty || !context.mounted) return;
+    // Resolve the app's shared NavigatorState *before* popping this sheet.
+    // `context` itself belongs to the sheet and is torn down once it
+    // closes, so using it again after the scan (which can take several
+    // seconds) would find `context.mounted == false` and silently no-op --
+    // exactly the bug this fixes. `navigator` belongs to the app's
+    // persistent Navigator and stays valid for the rest of this flow.
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    final barcode = await scanBarcode(navigator);
+    if (barcode == null || barcode.isEmpty || !navigator.mounted) return;
 
     // Local check first, no network: a barcode already in the catalog/
     // custom foods skips straight to "add to meal" instead of the add-food
     // form.
     final existing = state.foodByBarcode(barcode);
     if (existing != null) {
-      await showAddFoodToMealSheet(context, state, existing);
+      await showAddFoodToMealSheet(navigator.context, state, existing);
       return;
     }
 
-    await _lookUpAndOpenForm(context, state, barcode);
+    await _lookUpAndOpenForm(navigator, state, barcode);
   }
 
   Future<void> _lookUpAndOpenForm(
-    BuildContext context,
+    NavigatorState navigator,
     AppState state,
     String barcode,
   ) async {
     unawaited(
       showDialog<void>(
-        context: context,
+        context: navigator.context,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
@@ -114,8 +133,8 @@ class QuickAddFoodSheet extends StatelessWidget {
       errorMessage = error.message;
     }
 
-    if (!context.mounted) return;
-    Navigator.pop(context); // close the loading dialog
+    if (!navigator.mounted) return;
+    navigator.pop(); // close the loading dialog
 
     // Prefill only -- AddFoodToCatalogScreen never saves on its own (same
     // rule as the nutrition-label AI flow), and kosher status is
@@ -137,7 +156,7 @@ class QuickAddFoodSheet extends StatelessWidget {
     );
 
     if (product?.found != true) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(navigator.context).showSnackBar(
         SnackBar(
           content: Text(
             errorMessage != null
@@ -148,8 +167,7 @@ class QuickAddFoodSheet extends StatelessWidget {
       );
     }
 
-    await Navigator.push(
-      context,
+    await navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => AppStateScope(
           state: state,
