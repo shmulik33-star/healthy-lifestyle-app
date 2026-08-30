@@ -10,13 +10,14 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  TextEditingController? name,weight,target,calories,protein,customWait;
+  TextEditingController? name,weight,target,calories,protein,customWait,customWaterReminder;
   List<String> goals=[];
   String? primaryGoal,activity,style;
   int? workoutDays;
   bool keepKosher=true;
   bool separateMeatDairy=true;
   int waitMinutes=360;
+  int waterReminderMinutes=0;
   TimeOfDay dayStart=const TimeOfDay(hour:5,minute:0);
   bool initialized=false;
 
@@ -32,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     calories=TextEditingController(text:'${s.calorieTarget}');
     protein=TextEditingController(text:'${s.proteinTarget}');
     customWait=TextEditingController(text:'${s.meatWaitMinutes}');
+    customWaterReminder=TextEditingController(text:'${s.waterReminderMinutes}');
     goals=[s.primaryGoal];
     primaryGoal=s.primaryGoal;
     activity=s.activityLevel; style=s.eatingStyle;
@@ -39,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     keepKosher=s.kosherEnabled;
     separateMeatDairy=s.meatDairySeparationEnabled;
     waitMinutes=s.meatWaitMinutes;
+    waterReminderMinutes=s.waterReminderMinutes;
     dayStart=TimeOfDay(
       hour:s.dayStartMinutes~/60,
       minute:s.dayStartMinutes.remainder(60),
@@ -77,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose(){
-    for(final c in [name,weight,target,calories,protein,customWait]){c?.dispose();}
+    for(final c in [name,weight,target,calories,protein,customWait,customWaterReminder]){c?.dispose();}
     super.dispose();
   }
 
@@ -93,6 +96,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       -1:'זמן מותאם אישית',
     };
     final selectedWait=waits.containsKey(waitMinutes)?waitMinutes:-1;
+    const waterReminders=<int,String>{
+      0:'ללא',
+      30:'30 דק׳',
+      60:'שעה',
+      120:'שעתיים',
+      -1:'מותאם אישית',
+    };
+    final selectedWaterReminder=
+        waterReminders.containsKey(waterReminderMinutes)?waterReminderMinutes:-1;
     final selectedPrimary=ProfileGoalsStore.resolvePrimaryGoal(
       goals,
       preferred:primaryGoal??s.primaryGoal,
@@ -219,6 +231,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height:18),
+          Text('תזכורת שתייה',style:Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height:6),
+          const Text(
+            'תזכורת בתוך האפליקציה בלבד, כשהיא פתוחה — לא התראת push, ולא פועלת ברקע.',
+          ),
+          const SizedBox(height:8),
+          Wrap(
+            spacing:8,
+            runSpacing:8,
+            children:waterReminders.entries.map((e)=>ChoiceChip(
+              label:Text(e.value),
+              selected:selectedWaterReminder==e.key,
+              onSelected:(_)=>setState(()=>waterReminderMinutes=e.key),
+            )).toList(),
+          ),
+          if(waterReminderMinutes==-1)...[
+            const SizedBox(height:10),
+            TextField(
+              controller:customWaterReminder,
+              keyboardType:TextInputType.number,
+              decoration:const InputDecoration(
+                labelText:'תדירות מותאמת בדקות (לדוגמה 45)',
+                border:OutlineInputBorder(),
+              ),
+            ),
+          ],
+          const SizedBox(height:18),
           Text('כשרות',style:Theme.of(context).textTheme.titleMedium),
           const SizedBox(height:6),
           SwitchListTile(
@@ -273,6 +312,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final finalWait=waitMinutes==-1
                   ? (int.tryParse(customWait!.text)??360)
                   : waitMinutes;
+              final finalWaterReminder=waterReminderMinutes==-1
+                  ? (int.tryParse(customWaterReminder!.text)??0)
+                  : waterReminderMinutes;
               final finalPrimary=ProfileGoalsStore.resolvePrimaryGoal(
                 goals,
                 preferred:primaryGoal??s.primaryGoal,
@@ -290,6 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 separateMeatDairy:keepKosher&&separateMeatDairy,
                 waitMinutes:finalWait,
                 dailyStartMinutes:dayStart.hour*60+dayStart.minute,
+                waterReminderMinutes:finalWaterReminder,
               );
               Navigator.pop(context);
             },

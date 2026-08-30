@@ -352,6 +352,11 @@ class AppState extends ChangeNotifier {
   bool kosherEnabled = true;
   bool meatDairySeparationEnabled = true;
   int meatWaitMinutes = 360;
+  // Minutes between in-app water reminders; 0 = off. Same pattern as
+  // meatWaitMinutes: a plain profile field, last-writer-wins on cloud sync,
+  // no timer state of its own persisted (the timer itself only exists while
+  // the app is open -- see AppShell).
+  int waterReminderMinutes = 0;
   final List<FoodItem> customFoods = [];
   // Food IDs the user has marked as disliked, so AI/smart suggestions never
   // propose them again. A full-replace set (like `equipment`), not a
@@ -504,6 +509,7 @@ class AppState extends ChangeNotifier {
     'waterCups':waterCups,'waterTarget':waterTarget,'steps':steps,'stepsTarget':stepsTarget,'workoutCompleted':workoutCompleted,
     'dayStartMinutes':dayStartMinutes,'dailyStateKey':dailyStateKey,'dailyHistory':dailyHistory.map((e)=>e.toJson()).toList(),
     'kosherEnabled':kosherEnabled,'meatDairySeparationEnabled':meatDairySeparationEnabled,'meatWaitMinutes':meatWaitMinutes,
+    'waterReminderMinutes':waterReminderMinutes,
     'customFoods':customFoods.map((e)=>e.toJson()).toList(),
     'foodDislikes':foodDislikes.toList(),
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
@@ -531,6 +537,7 @@ class AppState extends ChangeNotifier {
     kosherEnabled=j['kosherEnabled']??kosherEnabled;
     meatDairySeparationEnabled=j['meatDairySeparationEnabled']??meatDairySeparationEnabled;
     meatWaitMinutes=j['meatWaitMinutes']??meatWaitMinutes;
+    waterReminderMinutes=j['waterReminderMinutes']??waterReminderMinutes;
     customFoods..clear()..addAll(((j['customFoods'] as List?)??[]).map((e)=>FoodItem.fromJson(Map<String,dynamic>.from(e))));
     foodDislikes..clear()..addAll(((j['foodDislikes'] as List?)??[]).map((e)=>e.toString()));
     deletedCustomFoodIds..clear()..addAll(decodeTombstoneMap(j['deletedCustomFoodIds']));
@@ -692,7 +699,7 @@ class AppState extends ChangeNotifier {
     required String name,required double weight,required double target,
     required int calories,required int protein,String? goal,String? activity,
     int? workoutDays,String? style,bool? keepKosher,bool? separateMeatDairy,
-    int? waitMinutes,int? dailyStartMinutes,
+    int? waitMinutes,int? dailyStartMinutes,int? waterReminderMinutes,
   }) => _profileUpdate(
     this,
     name:name,
@@ -708,7 +715,10 @@ class AppState extends ChangeNotifier {
     separateMeatDairy:separateMeatDairy,
     waitMinutes:waitMinutes,
     dailyStartMinutes:dailyStartMinutes,
+    waterReminderMinutes:waterReminderMinutes,
   );
+
+  bool get shouldRemindToDrink => _profileShouldRemindToDrink(this);
 
   int suggestedCalories() => _profileSuggestedCalories(this);
   int suggestedProtein() => _profileSuggestedProtein(this);

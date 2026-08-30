@@ -19,6 +19,7 @@ void _profileUpdate(
   bool? separateMeatDairy,
   int? waitMinutes,
   int? dailyStartMinutes,
+  int? waterReminderMinutes,
 }) {
   state.firstName = name;
   state.currentWeight = weight;
@@ -34,6 +35,9 @@ void _profileUpdate(
     state.meatDairySeparationEnabled = separateMeatDairy;
   }
   if (waitMinutes != null) state.meatWaitMinutes = waitMinutes;
+  if (waterReminderMinutes != null) {
+    state.waterReminderMinutes = waterReminderMinutes;
+  }
   if (dailyStartMinutes != null) {
     state.dayStartMinutes = dailyStartMinutes.clamp(0, 1439);
     state.dailyStateKey = state.dayKeyAt(DateTime.now());
@@ -41,6 +45,15 @@ void _profileUpdate(
   state.notifyListeners();
   state.generateWeeklyPlan();
 }
+
+/// Whether a water reminder tick (see AppShell's in-app-only timer -- there
+/// is no push notification here, only a SnackBar while the app is open) is
+/// actually worth showing right now: the user turned reminders on, and
+/// hasn't already hit today's water target. Kept as a pure function, not
+/// entangled with Timer.periodic itself, so it's what gets unit-tested --
+/// the timer's own firing isn't something CI can usefully exercise.
+bool _profileShouldRemindToDrink(AppState state) =>
+    state.waterReminderMinutes > 0 && state.waterCups < state.waterTarget;
 
 int _profileSuggestedCalories(AppState state) {
   final base = (state.currentWeight * 22).round();
@@ -114,6 +127,7 @@ extension AppStateCloudSyncBridge on AppState {
           'kosherEnabled': kosherEnabled,
           'meatDairySeparationEnabled': meatDairySeparationEnabled,
           'meatWaitMinutes': meatWaitMinutes,
+          'waterReminderMinutes': waterReminderMinutes,
           'primaryGoal': primaryGoal,
           'activityLevel': activityLevel,
           'workoutDaysPerWeek': workoutDaysPerWeek,
@@ -232,6 +246,9 @@ extension AppStateCloudSyncBridge on AppState {
               meatDairySeparationEnabled;
       meatWaitMinutes =
           (profile['meatWaitMinutes'] as num?)?.toInt() ?? meatWaitMinutes;
+      waterReminderMinutes = (profile['waterReminderMinutes'] as num?)
+              ?.toInt() ??
+          waterReminderMinutes;
       primaryGoal = profile['primaryGoal'] as String? ?? primaryGoal;
       activityLevel = profile['activityLevel'] as String? ?? activityLevel;
       workoutDaysPerWeek =
