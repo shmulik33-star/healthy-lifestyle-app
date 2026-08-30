@@ -24,6 +24,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     ],
   );
   bool _handled = false;
+  double _zoom = 0;
 
   @override
   void dispose() {
@@ -66,10 +67,30 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               color: Colors.black54,
-              child: const Text(
-                'כוון את המצלמה לברקוד על גבי האריזה',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'כוון את המצלמה לברקוד על גבי האריזה',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  Row(
+                    children: [
+                      const Icon(Icons.zoom_out, color: Colors.white, size: 20),
+                      Expanded(
+                        child: Slider(
+                          value: _zoom,
+                          onChanged: (v) {
+                            setState(() => _zoom = v);
+                            _controller.setZoomScale(v);
+                          },
+                        ),
+                      ),
+                      const Icon(Icons.zoom_in, color: Colors.white, size: 20),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
