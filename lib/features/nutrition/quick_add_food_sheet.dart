@@ -1,13 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
 import 'add_food_to_catalog_screen.dart';
 import 'add_food_to_meal_sheet.dart';
 import 'barcode_scanner_screen.dart';
+import 'meal_estimate_ai_service.dart';
+import 'nutrition_label_ai_service.dart';
 import 'open_food_facts_service.dart';
+import 'quick_log_ai_estimate_sheet.dart';
 
 /// How the barcode-scan option gets a barcode back. The real implementation
 /// pushes [BarcodeScannerScreen] (a live camera); tests substitute a
@@ -21,13 +25,16 @@ Future<String?> _pushBarcodeScanner(NavigatorState navigator) =>
       MaterialPageRoute<String>(builder: (_) => const BarcodeScannerScreen()),
     );
 
-/// Unified "quick add" entry point for getting a packaged food into the
-/// catalog fast, instead of the full 9-field manual form.
-///
-/// Only the barcode-scan option is wired up in this PR, but the sheet is
-/// structured as a list of options precisely so a future PR can add photo
-/// capture / free-text lookup by appending another `_QuickAddOptionTile`
-/// here -- no redesign of the entry point itself.
+/// Unified "quick add" entry point with two kinds of shortcuts:
+/// - Packaged food (barcode scan, via Open Food Facts) -- goes to the
+///   catalog form to review before it's saved.
+/// - Home-cooked / unpackaged meals (a plate photo or a free-text
+///   description, both via AI estimate) -- these skip the catalog form
+///   entirely and go straight to logging "אכלתי" (see
+///   [QuickLogAiEstimateSheet]), since a one-off home meal isn't a catalog
+///   item the way a packaged product is.
+/// Structured as a list of options so a future PR can add more without
+/// redesigning the entry point itself.
 class QuickAddFoodSheet extends StatelessWidget {
   const QuickAddFoodSheet({
     super.key,
@@ -58,7 +65,7 @@ class QuickAddFoodSheet extends StatelessWidget {
             Text('הוסף מהיר', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 6),
             const Text(
-              'הדרך המהירה להוסיף מזון ארוז למאגר, בלי למלא טופס שלם.',
+              'מזון ארוז — סריקה ישר למאגר. ארוחה ביתית — הערכת AI ישר ליומן.',
             ),
             const SizedBox(height: 14),
             _QuickAddOptionTile(
@@ -67,6 +74,22 @@ class QuickAddFoodSheet extends StatelessWidget {
               title: 'סרוק ברקוד',
               subtitle: 'זיהוי אוטומטי של המוצר לפי מאגר Open Food Facts',
               onTap: () => _scanBarcode(context, state),
+            ),
+            const SizedBox(height: 8),
+            _QuickAddOptionTile(
+              key: const Key('quick_add_photo_option'),
+              icon: Icons.restaurant_outlined,
+              title: 'צלם צלחת',
+              subtitle: 'הערכת AI לארוחה ביתית לפי תמונה, ישר ליומן',
+              onTap: () => _photoEstimate(context, state),
+            ),
+            const SizedBox(height: 8),
+            _QuickAddOptionTile(
+              key: const Key('quick_add_describe_option'),
+              icon: Icons.edit_note_outlined,
+              title: 'הקלד תיאור',
+              subtitle: 'הערכת AI לארוחה ביתית לפי תיאור חופשי, ישר ליומן',
+              onTap: () => _textEstimate(context, state),
             ),
           ],
         ),
@@ -174,6 +197,174 @@ class QuickAddFoodSheet extends StatelessWidget {
           child: AddFoodToCatalogScreen(state: state, prefill: prefill),
         ),
       ),
+    );
+  }
+
+  Future<void> _photoEstimate(BuildContext context, AppState state) async {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+
+    XFile? file;
+    try {
+      file = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1600,
+        imageQuality: 82,
+      );
+    } catch (_) {
+      file = null;
+    }
+    if (file == null || !navigator.mounted) return;
+
+    final bytes = await file.readAsBytes();
+    if (!navigator.mounted) return;
+    final mimeType = _mimeTypeFor(file);
+
+    await _runEstimateAndOpenLogSheet(
+      navigator,
+      state,
+      () => MealEstimateAiService.estimateFromImage(
+        imageBytes: bytes,
+        mimeType: mimeType,
+      ),
+    );
+  }
+
+  Future<void> _textEstimate(BuildContext context, AppState state) async {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    if (!navigator.mounted) return;
+
+    final description = await showDialog<String>(
+      context: navigator.context,
+      builder: (_) => const _DescribeMealDialog(),
+    );
+    if (description == null || description.trim().isEmpty || !navigator.mounted) {
+      return;
+    }
+
+    await _runEstimateAndOpenLogSheet(
+      navigator,
+      state,
+      () => MealEstimateAiService.estimateFromText(text: description),
+    );
+  }
+
+  /// Shared by both the photo and free-text estimate flows: runs the AI
+  /// call behind a loading dialog, then either surfaces an error (network
+  /// failure or a too-vague photo/description) or opens
+  /// [QuickLogAiEstimateSheet] straight to "אכלתי" -- never through
+  /// [AddFoodToCatalogScreen].
+  Future<void> _runEstimateAndOpenLogSheet(
+    NavigatorState navigator,
+    AppState state,
+    Future<NutritionLabelAiSuggestion> Function() run,
+  ) async {
+    unawaited(
+      showDialog<void>(
+        context: navigator.context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Text('מעריך את הארוחה…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    NutritionLabelAiSuggestion? suggestion;
+    String? errorMessage;
+    try {
+      suggestion = await run();
+    } on MealEstimateAiException catch (error) {
+      errorMessage = error.message;
+    }
+
+    if (!navigator.mounted) return;
+    navigator.pop(); // close the loading dialog
+
+    if (suggestion == null || !suggestion.recognized) {
+      ScaffoldMessenger.of(navigator.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMessage ??
+                (suggestion != null && suggestion.reason.isNotEmpty
+                    ? suggestion.reason
+                    : 'לא הצלחנו להעריך את הארוחה. אפשר לנסות שוב או לתעד ידנית.'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    await QuickLogAiEstimateSheet.show(navigator.context, state, suggestion);
+  }
+
+  static String _mimeTypeFor(XFile file) {
+    final reported = file.mimeType?.toLowerCase();
+    if (reported == 'image/jpeg' ||
+        reported == 'image/png' ||
+        reported == 'image/webp') {
+      return reported!;
+    }
+    final path = file.path.toLowerCase();
+    if (path.endsWith('.png')) return 'image/png';
+    if (path.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+}
+
+class _DescribeMealDialog extends StatefulWidget {
+  const _DescribeMealDialog();
+
+  @override
+  State<_DescribeMealDialog> createState() => _DescribeMealDialogState();
+}
+
+class _DescribeMealDialogState extends State<_DescribeMealDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('מה אכלת?'),
+      content: TextField(
+        key: const Key('quick_add_meal_description_field'),
+        controller: controller,
+        autofocus: true,
+        maxLines: 3,
+        decoration: const InputDecoration(
+          hintText: 'לדוגמה: קערת אורז עם עדשים וסלט ירקות',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('ביטול'),
+        ),
+        FilledButton(
+          key: const Key('quick_add_meal_description_continue'),
+          onPressed: () => Navigator.pop(context, controller.text),
+          child: const Text('המשך'),
+        ),
+      ],
     );
   }
 }

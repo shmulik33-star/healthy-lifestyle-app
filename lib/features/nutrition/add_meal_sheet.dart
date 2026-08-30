@@ -79,7 +79,7 @@ class _AddMealSheetState extends State<AddMealSheet> {
                 key: const Key('quick_add_food_button'),
                 onPressed: () => QuickAddFoodSheet.show(context, state),
                 icon: const Icon(Icons.qr_code_scanner_outlined),
-                label: const Text('הוסף מהיר — סרוק ברקוד'),
+                label: const Text('הוסף מהיר'),
               ),
               ..._quickLogSection(state, foods),
               const SizedBox(height: 14),
