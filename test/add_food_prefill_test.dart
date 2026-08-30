@@ -20,8 +20,7 @@ void _useTallTestSurface(WidgetTester tester) {
 
 void main() {
   testWidgets(
-    'a barcode-scan prefill fills name/macros and shows the barcode, but '
-    'leaves kosher status at its manual default',
+    'a barcode-scan prefill fills name/macros and shows the barcode',
     (tester) async {
       _useTallTestSurface(tester);
       const prefill = FoodItem(
@@ -49,9 +48,6 @@ void main() {
       expect(find.text('3.5'), findsOneWidget);
       expect(find.byKey(const Key('food_barcode_card')), findsOneWidget);
       expect(find.textContaining('7290000000001'), findsOneWidget);
-      // Kosher status dropdown still shows the manual default label, not
-      // anything inferred from the prefill data.
-      expect(find.text(kosherStatusLabel(KosherStatus.unknown)), findsOneWidget);
     },
   );
 

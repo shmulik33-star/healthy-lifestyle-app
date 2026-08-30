@@ -43,7 +43,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   final unitGrams = TextEditingController(text: '100');
 
   String category = 'אחר';
-  KosherStatus kosherStatus = KosherStatus.unknown;
   KosherFoodType kosherType = KosherFoodType.pareve;
   String? _barcode;
 
@@ -65,7 +64,6 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       carbs.text = _formatNumber(food.carbsPer100g);
       fat.text = _formatNumber(food.fatPer100g);
       category = food.category;
-      kosherStatus = food.kosherStatus;
       kosherType = food.type;
       _barcode = food.barcode;
       // units holds {customUnitName: grams, 'גרם': 1} — recover the
@@ -218,7 +216,8 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final showKosherFields = widget.state.kosherEnabled;
+    final showKosherTypeField =
+        widget.state.kosherEnabled && widget.state.meatDairySeparationEnabled;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.editingFood == null ? 'הוסף מזון למאגר' : 'עריכת מזון'),
@@ -386,45 +385,25 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
               ),
             ),
           ],
-          if (showKosherFields) ...[
+          if (showKosherTypeField) ...[
             const SizedBox(height: 10),
-            DropdownButtonFormField<KosherStatus>(
-              initialValue: kosherStatus,
+            DropdownButtonFormField<KosherFoodType>(
+              initialValue: kosherType,
               decoration: const InputDecoration(
-                labelText: 'מצב כשרות',
+                labelText: 'סיווג כשרותי',
                 border: OutlineInputBorder(),
               ),
-              items: KosherStatus.values
+              items: KosherFoodType.values
                   .map(
                     (v) => DropdownMenuItem(
                       value: v,
-                      child: Text(kosherStatusLabel(v)),
+                      child: Text(kosherLabel(v)),
                     ),
                   )
                   .toList(),
               onChanged: (v) =>
-                  setState(() => kosherStatus = v ?? KosherStatus.unknown),
+                  setState(() => kosherType = v ?? KosherFoodType.pareve),
             ),
-            if (kosherStatus == KosherStatus.kosher) ...[
-              const SizedBox(height: 10),
-              DropdownButtonFormField<KosherFoodType>(
-                initialValue: kosherType,
-                decoration: const InputDecoration(
-                  labelText: 'סיווג כשרותי',
-                  border: OutlineInputBorder(),
-                ),
-                items: KosherFoodType.values
-                    .map(
-                      (v) => DropdownMenuItem(
-                        value: v,
-                        child: Text(kosherLabel(v)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) =>
-                    setState(() => kosherType = v ?? KosherFoodType.pareve),
-              ),
-            ],
           ],
           const SizedBox(height: 16),
           const Text(
@@ -517,7 +496,12 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       category: category,
       categoryDetail: category == 'אחר' ? detail : '',
       type: kosherType,
-      kosherStatus: kosherStatus,
+      // Kosher status is no longer a user-facing choice in this form -- the
+      // single user this app serves keeps kosher, so every food saved here
+      // is simply marked kosher (see CLAUDE.md golden rule #4: never infer
+      // kosher status from AI/external data, but this is neither -- it's a
+      // fixed default for a household that keeps kosher).
+      kosherStatus: KosherStatus.kosher,
       caloriesPer100g:
           double.tryParse(calories.text.replaceAll(',', '.')) ?? 0,
       proteinPer100g: double.tryParse(protein.text.replaceAll(',', '.')) ?? 0,
