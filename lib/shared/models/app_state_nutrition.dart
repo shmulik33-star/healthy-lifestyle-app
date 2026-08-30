@@ -364,19 +364,36 @@ double _plannedMealTargetFit(
 int _lastUsedIndex(PlannedMeal meal, List<String> history) =>
     history.lastIndexOf(meal.description);
 
-/// Whether any of [meal]'s shopping-list ingredients (matched by name, the
-/// same way [_plannedMealPantryCoverage] matches ingredients against pantry
-/// stock -- planned-meal ingredients aren't tied to a food ID) is a food the
-/// user has disliked (per [AppState.isFoodDisliked]).
+/// Whether any of [meal]'s shopping-list ingredients is a food the user has
+/// disliked (per [AppState.isFoodDisliked]).
+///
+/// Deliberately *not* [AppState._sameFoodName] (used elsewhere for
+/// pantry/meal matching): catalog food names carry a preparation descriptor
+/// the weekly-plan shopping keys drop -- 'קינואה מבושלת' in the catalog vs.
+/// 'קינואה' as a shopping key, 'טונה במים מסוננת' vs. 'טונה במים', and
+/// roughly half the 29-item catalog follows the same pattern. `_sameFoodName`
+/// requires equality after light normalization and would silently miss all
+/// of these. A substring match after the same normalization catches them
+/// without touching `_sameFoodName` itself, which stays exact on purpose
+/// elsewhere (e.g. so pantry matching doesn't confuse "ביצה" with "סלט
+/// ביצים"). This still won't catch a plural/singular mismatch (e.g.
+/// 'עגבנייה' vs 'עגבניות', 'פריכית' vs 'פריכיות') -- that needs the planned
+/// future move to matching planned-meal ingredients by food ID instead of
+/// free-text names, already tracked elsewhere in the project.
 bool _plannedMealHasDislikedIngredient(AppState state, PlannedMeal meal) {
   if (state.foodDislikes.isEmpty) return false;
-  final dislikedNames =
-      state.allFoods.where(state.isFoodDisliked).map((food) => food.name);
-  return meal.shopping.keys.any(
-    (ingredient) => dislikedNames.any(
-      (disliked) => AppState._sameFoodName(disliked, ingredient),
-    ),
-  );
+  final dislikedNames = state.allFoods
+      .where(state.isFoodDisliked)
+      .map((food) => AppState._normalizeFoodName(food.name));
+  return meal.shopping.keys.any((ingredient) {
+    final normalized = AppState._normalizeFoodName(ingredient);
+    return dislikedNames.any(
+      (disliked) =>
+          disliked == normalized ||
+          disliked.contains(normalized) ||
+          normalized.contains(disliked),
+    );
+  });
 }
 
 /// Picks one meal out of [options] for a single day/slot, applying four

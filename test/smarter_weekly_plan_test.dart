@@ -121,6 +121,30 @@ void main() {
     },
   );
 
+  test(
+    'a disliked ingredient is still matched when the catalog name adds a '
+    'preparation descriptor the shopping key drops (e.g. קינואה מבושלת vs. '
+    'קינואה) -- generateWeeklyPlan skips the meal even though the names are '
+    'not exactly equal',
+    () {
+      final state = AppState()..recentMealKeys.clear();
+      // Stock exactly what the pargit lunch needs -- see the pantry-
+      // awareness test below, where this alone makes it the clear winner.
+      // Disliking קינואה has to be what rules it out here, not pantry
+      // coverage or anything else.
+      state.addPantryItem('פרגית', 1, 'יחידות', 'בשר ועוף');
+      state.addPantryItem('ירקות לסלט', 1, 'יחידות', 'ירקות');
+      state.addPantryItem('קינואה', 1, 'יחידות', 'לחמים ודגנים');
+
+      final quinoa = state.allFoods.firstWhere((food) => food.id == 'quinoa');
+      state.setFoodDisliked(quinoa, true);
+
+      state.generateWeeklyPlan(save: false);
+
+      expect(state.weeklyPlan[0].meals[1].description, isNot(_pargitLunch));
+    },
+  );
+
   test('pantry awareness prefers a lunch whose ingredients are already in stock', () {
     final state = AppState()..recentMealKeys.clear();
 
