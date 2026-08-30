@@ -48,6 +48,7 @@ class FoodItem {
     this.categoryDetail = '',
     this.kosherStatus = KosherStatus.kosher,
     this.userCreated = false,
+    this.barcode,
   });
 
   final String id;
@@ -62,6 +63,12 @@ class FoodItem {
   final double fatPer100g;
   final Map<String, double> units;
   final bool userCreated;
+
+  /// Product barcode (EAN/UPC), when this food was added via barcode scan
+  /// (see the "quick add" flow). Null for hand-entered and built-in catalog
+  /// foods -- optional and additive, so existing saved foods without one
+  /// keep loading exactly as before.
+  final String? barcode;
 
   String get displayCategory =>
       category == 'אחר' && categoryDetail.trim().isNotEmpty
@@ -91,6 +98,7 @@ class FoodItem {
         'fatPer100g': fatPer100g,
         'units': units,
         'userCreated': userCreated,
+        'barcode': barcode,
       };
 
   factory FoodItem.fromJson(Map<String, dynamic> json) {
@@ -132,6 +140,7 @@ class FoodItem {
         ),
       ),
       userCreated: json['userCreated'] == true,
+      barcode: json['barcode']?.toString(),
     );
   }
 }

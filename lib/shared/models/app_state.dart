@@ -651,6 +651,7 @@ class AppState extends ChangeNotifier {
   bool isFoodDisliked(FoodItem food) => foodDislikes.contains(food.id);
 
   FoodItem foodById(String id) => _nutritionFoodById(this, id);
+  FoodItem? foodByBarcode(String barcode) => _nutritionFoodByBarcode(this, barcode);
   void addFood(FoodItem food,double quantity,String unit,{bool fromHome = true}) =>
       _nutritionAddFood(this, food, quantity, unit, fromHome: fromHome);
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);

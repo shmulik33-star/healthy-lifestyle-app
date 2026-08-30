@@ -38,6 +38,19 @@ List<FoodItem> _nutritionAllFoods(AppState state) =>
 FoodItem _nutritionFoodById(AppState state, String id) =>
     state.allFoods.firstWhere((food) => food.id == id);
 
+/// Finds a food already in the catalog/custom foods by its scanned
+/// barcode, or null if none matches -- unlike [_nutritionFoodById], "no
+/// match" is the expected common case here (most scans are a new product),
+/// not an error.
+FoodItem? _nutritionFoodByBarcode(AppState state, String barcode) {
+  final normalized = barcode.trim();
+  if (normalized.isEmpty) return null;
+  for (final food in state.allFoods) {
+    if (food.barcode == normalized) return food;
+  }
+  return null;
+}
+
 // How far back `_nutritionQuickLogSuggestions` looks when tallying a past
 // (food, quantity, unit) combination's frequency and recency.
 const _quickLogLookbackWindow = Duration(days: 30);

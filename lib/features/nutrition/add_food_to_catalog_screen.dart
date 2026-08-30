@@ -8,11 +8,25 @@ import '../../shared/models/food.dart';
 import 'nutrition_label_ai_service.dart';
 
 class AddFoodToCatalogScreen extends StatefulWidget {
-  const AddFoodToCatalogScreen({super.key, required this.state, this.editingFood});
+  const AddFoodToCatalogScreen({
+    super.key,
+    required this.state,
+    this.editingFood,
+    this.prefill,
+  });
   final AppState state;
   // When set, the screen edits this existing custom food in place (same id
   // on save) instead of creating a new one, and offers a delete action.
   final FoodItem? editingFood;
+  // When set (and editingFood is not), prefills a *new* food's name/macros/
+  // barcode from an external source (e.g. Open Food Facts via barcode
+  // scan) for the user to review and correct -- same "AI/external data
+  // fills the form, never saves it" rule as the nutrition-label flow (see
+  // CLAUDE.md golden rule #5). Its id, category and kosher fields are
+  // never read: kosher status in particular must stay an explicit user
+  // choice (golden rule #4), so it's left at the form's own manual
+  // default regardless of what a prefill draft carries.
+  final FoodItem? prefill;
 
   @override
   State<AddFoodToCatalogScreen> createState() => _AddFoodToCatalogScreenState();
@@ -31,6 +45,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   String category = 'אחר';
   KosherStatus kosherStatus = KosherStatus.unknown;
   KosherFoodType kosherType = KosherFoodType.pareve;
+  String? _barcode;
 
   Uint8List? _labelImageBytes;
   bool _scanningLabel = false;
@@ -42,25 +57,40 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   void initState() {
     super.initState();
     final food = widget.editingFood;
-    if (food == null) return;
-    name.text = food.name;
-    categoryDetail.text = food.categoryDetail;
-    calories.text = _formatNumber(food.caloriesPer100g);
-    protein.text = _formatNumber(food.proteinPer100g);
-    carbs.text = _formatNumber(food.carbsPer100g);
-    fat.text = _formatNumber(food.fatPer100g);
-    category = food.category;
-    kosherStatus = food.kosherStatus;
-    kosherType = food.type;
-    // units holds {customUnitName: grams, 'גרם': 1} — recover the
-    // non-gram entry the user originally defined, if any.
-    final customUnitEntries =
-        food.units.entries.where((entry) => entry.key != 'גרם');
-    if (customUnitEntries.isNotEmpty) {
-      final customUnit = customUnitEntries.first;
-      unitName.text = customUnit.key;
-      unitGrams.text = _formatNumber(customUnit.value);
+    if (food != null) {
+      name.text = food.name;
+      categoryDetail.text = food.categoryDetail;
+      calories.text = _formatNumber(food.caloriesPer100g);
+      protein.text = _formatNumber(food.proteinPer100g);
+      carbs.text = _formatNumber(food.carbsPer100g);
+      fat.text = _formatNumber(food.fatPer100g);
+      category = food.category;
+      kosherStatus = food.kosherStatus;
+      kosherType = food.type;
+      _barcode = food.barcode;
+      // units holds {customUnitName: grams, 'גרם': 1} — recover the
+      // non-gram entry the user originally defined, if any.
+      final customUnitEntries =
+          food.units.entries.where((entry) => entry.key != 'גרם');
+      if (customUnitEntries.isNotEmpty) {
+        final customUnit = customUnitEntries.first;
+        unitName.text = customUnit.key;
+        unitGrams.text = _formatNumber(customUnit.value);
+      }
+      return;
     }
+
+    final prefill = widget.prefill;
+    if (prefill == null) return;
+    // Only name/macros/barcode are copied -- category and kosher fields
+    // deliberately stay at the form's own manual defaults (see the
+    // `prefill` field doc above).
+    if (prefill.name.isNotEmpty) name.text = prefill.name;
+    if (prefill.caloriesPer100g > 0) calories.text = _formatNumber(prefill.caloriesPer100g);
+    if (prefill.proteinPer100g > 0) protein.text = _formatNumber(prefill.proteinPer100g);
+    if (prefill.carbsPer100g > 0) carbs.text = _formatNumber(prefill.carbsPer100g);
+    if (prefill.fatPer100g > 0) fat.text = _formatNumber(prefill.fatPer100g);
+    _barcode = prefill.barcode;
   }
 
   @override
@@ -305,6 +335,24 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
               ),
             ),
           ),
+          if (_barcode != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              key: const Key('food_barcode_card'),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.qr_code_scanner, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('ברקוד נסרק: $_barcode'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           const Text('פרטי המזון', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
@@ -480,6 +528,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
         'גרם': 1,
       },
       userCreated: true,
+      barcode: _barcode,
     );
     widget.state.addCustomFood(food);
     ScaffoldMessenger.of(context).showSnackBar(
