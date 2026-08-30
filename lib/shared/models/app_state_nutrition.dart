@@ -584,6 +584,20 @@ PlannedMeal _pickPlannedMeal(
 void _nutritionGenerateWeeklyPlan(AppState state, {bool save = true}) {
   final days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
+  // The real, shipped `foodCatalog` is never empty, so this can't happen in
+  // the app itself -- but `_weeklyPlanCandidates` now derives every slot's
+  // pool from `state.allFoods`, and `_pickPlannedMeal` requires a non-empty
+  // list by design (see its docstring), so a genuinely empty catalog (e.g.
+  // a test double overriding `allFoods` to simulate one) would otherwise
+  // crash deep in `_pickPlannedMeal`'s `.reduce()` instead of just leaving
+  // the plan empty.
+  if (state.allFoods.isEmpty) {
+    state.weeklyPlan.clear();
+    state.notifyListeners();
+    if (save) state._save();
+    return;
+  }
+
   final targetCalories = state.calorieTarget.toDouble();
   final targetProtein = state.proteinTarget.toDouble();
   // A working copy of the persisted history: _pickPlannedMeal appends to it
