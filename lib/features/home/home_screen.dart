@@ -86,9 +86,11 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               MetricCard(
+                key: const Key('water_metric_card'),
                 icon: Icons.water_drop_outlined,
                 value: '${state.waterCups}/${state.waterTarget}',
                 label: 'כוסות מים',
+                onTap: () => _addWater(context, state),
               ),
               const SizedBox(width: 8),
               MetricCard(
