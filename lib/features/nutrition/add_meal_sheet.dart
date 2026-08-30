@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
+import 'quick_add_food_sheet.dart';
 
 class AddMealSheet extends StatefulWidget {
   const AddMealSheet({super.key});
@@ -72,6 +73,13 @@ class _AddMealSheetState extends State<AddMealSheet> {
               const SizedBox(height: 6),
               const Text(
                 'התחל להקליד את שם המזון ובחר מההשלמות. מזון חדש מוסיפים בנפרד ל“מאגר המזונות”.',
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const Key('quick_add_food_button'),
+                onPressed: () => QuickAddFoodSheet.show(context, state),
+                icon: const Icon(Icons.qr_code_scanner_outlined),
+                label: const Text('הוסף מהיר — סרוק ברקוד'),
               ),
               ..._quickLogSection(state, foods),
               const SizedBox(height: 14),
