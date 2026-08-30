@@ -4,11 +4,26 @@ import 'package:healthy_lifestyle_stage9/features/nutrition/add_food_to_catalog_
 import 'package:healthy_lifestyle_stage9/shared/models/app_state.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/food.dart';
 
+/// AddFoodToCatalogScreen's body is a `ListView`, which is sliver-backed
+/// and virtualized even though every child is passed as a plain list --
+/// widgets well below the viewport (here, the calorie/protein/carbs/fat
+/// fields, pushed down by the sizable "צילום תווית + AI" card above them)
+/// simply aren't built at all, not just unpainted. `find.text` only sees
+/// what's actually in the widget tree, so a viewport tall enough to fit
+/// the whole form is needed for those assertions to mean anything.
+void _useTallTestSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   testWidgets(
     'a barcode-scan prefill fills name/macros and shows the barcode, but '
     'leaves kosher status at its manual default',
     (tester) async {
+      _useTallTestSurface(tester);
       const prefill = FoodItem(
         id: '',
         name: 'יוגורט טבעי 3%',
@@ -44,6 +59,7 @@ void main() {
     'a prefill with missing macros (an OFF miss/network failure) leaves '
     'those fields empty for manual entry instead of showing 0',
     (tester) async {
+      _useTallTestSurface(tester);
       const prefill = FoodItem(
         id: '',
         name: '',
