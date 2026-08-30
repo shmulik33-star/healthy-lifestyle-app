@@ -24,7 +24,6 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     ],
   );
   bool _handled = false;
-  double _zoom = 0;
 
   @override
   void dispose() {
@@ -61,36 +60,35 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             controller: _controller,
             onDetect: _handleDetection,
           ),
+          // A fixed visual guide frame -- helps the user line the barcode up
+          // and hold the phone at a distance where it's in focus, similar to
+          // the framing native camera apps show. It's decorative only: does
+          // not narrow what the scanner actually reads (mobile_scanner's
+          // scanWindow, which would do that, isn't supported on Flutter Web
+          // -- our primary target -- so wiring it would silently no-op there
+          // the same way the zoom control just did).
+          IgnorePointer(
+            child: Center(
+              child: Container(
+                width: 260,
+                height: 160,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 3),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               color: Colors.black54,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'כוון את המצלמה לברקוד על גבי האריזה',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white),
-                  ),
-                  Row(
-                    children: [
-                      const Icon(Icons.zoom_out, color: Colors.white, size: 20),
-                      Expanded(
-                        child: Slider(
-                          value: _zoom,
-                          onChanged: (v) {
-                            setState(() => _zoom = v);
-                            _controller.setZoomScale(v);
-                          },
-                        ),
-                      ),
-                      const Icon(Icons.zoom_in, color: Colors.white, size: 20),
-                    ],
-                  ),
-                ],
+              child: const Text(
+                'כוון את המצלמה כך שהברקוד ימלא את המסגרת',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white),
               ),
             ),
           ),
