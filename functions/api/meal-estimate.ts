@@ -1,32 +1,5 @@
 const MODEL = '@cf/google/gemma-4-26b-a4b-it';
 
-const estimateSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    recognized: { type: 'boolean' },
-    name: { type: 'string' },
-    caloriesPer100g: { type: 'number', minimum: 0, maximum: 900 },
-    proteinPer100g: { type: 'number', minimum: 0, maximum: 100 },
-    carbsPer100g: { type: 'number', minimum: 0, maximum: 100 },
-    fatPer100g: { type: 'number', minimum: 0, maximum: 100 },
-    servingGrams: { type: 'number', minimum: 0, maximum: 3000 },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
-    reason: { type: 'string' },
-  },
-  required: [
-    'recognized',
-    'name',
-    'caloriesPer100g',
-    'proteinPer100g',
-    'carbsPer100g',
-    'fatPer100g',
-    'servingGrams',
-    'confidence',
-    'reason',
-  ],
-};
-
 type Estimate = {
   recognized: boolean;
   name: string;
@@ -187,6 +160,10 @@ Rules:
   empty name, all numeric fields 0, and explain briefly in reason.
 - confidence should reflect how certain the estimate is, lower for vague
   photos/descriptions or unusual/mixed dishes.
+
+Return exactly one JSON object with these keys: recognized, name,
+caloriesPer100g, proteinPer100g, carbsPer100g, fatPer100g, servingGrams,
+confidence, reason.
 `;
 
 async function runVisionEstimate(ai: any, dataUrl: string) {
@@ -204,13 +181,10 @@ async function runVisionEstimate(ai: any, dataUrl: string) {
         ],
       },
     ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: estimateSchema,
-    },
-    max_completion_tokens: 700,
-    reasoning_effort: 'low',
-    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    chat_template_kwargs: { enable_thinking: false },
+    max_completion_tokens: 1900,
+    temperature: 0,
   });
 }
 
@@ -226,13 +200,10 @@ async function runTextEstimate(ai: any, description: string) {
         content: `Estimate the meal described below.\n${promptRules}\n\nDescription:\n${description.slice(0, 2000)}`,
       },
     ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: estimateSchema,
-    },
-    max_completion_tokens: 700,
-    reasoning_effort: 'low',
-    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    chat_template_kwargs: { enable_thinking: false },
+    max_completion_tokens: 1900,
+    temperature: 0,
   });
 }
 
@@ -260,7 +231,7 @@ export async function onRequestGet(context: any) {
     status: 'ok',
     aiBinding: Boolean(context.env?.AI),
     model: MODEL,
-    pipeline: 'meal-estimate-json-schema-v1',
+    pipeline: 'meal-estimate-json-object-v1',
   });
 }
 
