@@ -44,6 +44,14 @@ void main() {
     expect(find.byKey(const Key('quick_add_barcode_option')), findsOneWidget);
     expect(find.textContaining('Open Food Facts'), findsOneWidget);
     expect(find.byIcon(Icons.qr_code_scanner), findsOneWidget);
+
+    // The two AI meal-estimate options (home-cooked/unpackaged food) --
+    // also present but not tapped, same reasoning as the barcode option:
+    // no real camera/AI network in CI's headless widget-test runner.
+    expect(find.text('צלם צלחת'), findsOneWidget);
+    expect(find.byKey(const Key('quick_add_photo_option')), findsOneWidget);
+    expect(find.text('הקלד תיאור'), findsOneWidget);
+    expect(find.byKey(const Key('quick_add_describe_option')), findsOneWidget);
   });
 
   // Regression test: tapping "סרוק ברקוד" used the sheet's own BuildContext
@@ -99,6 +107,53 @@ void main() {
       expect(find.text('הוסף מהיר'), findsNothing);
       expect(find.text('מוצר קיים בברקוד'), findsOneWidget);
       expect(find.text('הוסף ליומן'), findsOneWidget);
+    },
+  );
+
+  // Covers the front half of the "הקלד תיאור" flow (the sheet closes and a
+  // description dialog opens) without going past it into the actual AI
+  // network call, which needs a live network unavailable in CI's widget
+  // tests -- same reasoning as not tapping the barcode/photo options above.
+  testWidgets(
+    'tapping "הקלד תיאור" closes the quick-add sheet and opens a '
+    'description dialog',
+    (tester) async {
+      final state = AppState();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => QuickAddFoodSheet(state: state),
+                ),
+                child: const Text('פתח הוסף מהיר'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('פתח הוסף מהיר'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('quick_add_describe_option')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('הוסף מהיר'), findsNothing);
+      expect(find.text('מה אכלת?'), findsOneWidget);
+      expect(find.byKey(const Key('quick_add_meal_description_field')), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('quick_add_meal_description_field')),
+        'קערת אורז עם עדשים',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('קערת אורז עם עדשים'), findsOneWidget);
     },
   );
 }
