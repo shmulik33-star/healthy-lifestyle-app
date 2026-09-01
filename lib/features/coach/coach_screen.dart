@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -167,7 +166,7 @@ class _CoachScreenState extends State<CoachScreen> {
       // support setVoice) affect availability -- setLanguage above already
       // found a genuinely working locale.
       await _runSafely(() async {
-        final voices = await _tts.getVoices() as List<dynamic>?;
+        final voices = await _tts.getVoices as List<dynamic>?;
         final hebrewVoice = voices?.firstWhere(
               (voice) {
                 final locale = (voice is Map ? voice['locale'] : null)?.toString().toLowerCase() ?? '';
