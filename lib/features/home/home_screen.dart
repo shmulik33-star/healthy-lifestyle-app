@@ -326,7 +326,7 @@ class HomeScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('מה אפשר לנשנש?'),
-        content: Text(state.smartFoodSuggestions.join('\n\n')),
+        content: Text(state.smartSnackSuggestions.join('\n\n')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -380,6 +380,11 @@ class _QuickActionTile extends StatelessWidget {
     const contentColor = Colors.white;
     return SizedBox(
       width: 98,
+      // Explicit height so a value-less tile (just a 1-line label, e.g.
+      // "אכלתי") renders the same size as a tile with a value + secondary
+      // label line (e.g. "כוסות מים") -- mainAxisSize.min below only sizes
+      // to content, so without this the shorter tile visibly shrank.
+      height: 108,
       child: Material(
         color: color,
         borderRadius: BorderRadius.circular(22),

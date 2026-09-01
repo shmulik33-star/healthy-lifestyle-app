@@ -953,6 +953,7 @@ class AppState extends ChangeNotifier {
   WorkoutExercise alternativeFor(WorkoutExercise current) =>
       _fitnessAlternativeFor(this, current);
   List<String> get smartFoodSuggestions => _nutritionSmartFoodSuggestions(this);
+  List<String> get smartSnackSuggestions => _nutritionSmartSnackSuggestions(this);
   String get kosherStateText => _kosherStateText(this);
 
   Map<String, dynamic> coachAiContext() => _coachAiContext(this);

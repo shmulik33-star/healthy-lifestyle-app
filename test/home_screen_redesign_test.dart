@@ -50,6 +50,22 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the three quick-action tiles render at the same size, even though only '
+    'two of them show a value + secondary label line',
+    (tester) async {
+      _useTallTestSurface(tester);
+      await tester.pumpWidget(wrap(AppState()));
+
+      final tileBoxes = tester
+          .widgetList<SizedBox>(find.byType(SizedBox))
+          .where((box) => box.width == 98)
+          .toList();
+      expect(tileBoxes, hasLength(3));
+      expect(tileBoxes.map((box) => box.height).toSet(), hasLength(1));
+    },
+  );
+
   testWidgets('tapping "הוסף מזון למאגר" opens the add-to-catalog screen', (tester) async {
     _useTallTestSurface(tester);
     await tester.pumpWidget(wrap(AppState()));

@@ -710,8 +710,12 @@ List<String> _nutritionSmartFoodSuggestions(AppState state) {
   if (allowed.isEmpty) {
     return ['לא מצאתי כרגע מזון מתאים לכל ההגדרות'];
   }
+  return _rankFoodsByTiers(state, allowed).take(3).map((food) => food.name).toList();
+}
 
-  allowed.sort((a, b) {
+List<FoodItem> _rankFoodsByTiers(AppState state, List<FoodItem> foods) {
+  final ranked = List<FoodItem>.of(foods);
+  ranked.sort((a, b) {
     final dislikedCompare = state.isFoodDisliked(a) == state.isFoodDisliked(b)
         ? 0
         : (state.isFoodDisliked(a) ? 1 : -1);
@@ -729,6 +733,24 @@ List<String> _nutritionSmartFoodSuggestions(AppState state) {
 
     return _foodProteinEfficiency(b).compareTo(_foodProteinEfficiency(a));
   });
+  return ranked;
+}
 
-  return allowed.take(3).map((food) => food.name).toList();
+/// Same tiered ranking as [_nutritionSmartFoodSuggestions], but restricted
+/// to the "חטיפים וממתקים" catalog category first, so "בא לי לנשנש" offers
+/// actual treats/snacks instead of the top-ranked food overall (which is
+/// usually a protein-dense main-meal item, not something you'd snack on).
+/// Falls back to the full smart-suggestions ranking only if the allowed
+/// catalog has no snack-category items at all (e.g. a very trimmed custom
+/// catalog), so the button never comes back empty.
+List<String> _nutritionSmartSnackSuggestions(AppState state) {
+  final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
+  if (allowed.isEmpty) {
+    return ['לא מצאתי כרגע מזון מתאים לכל ההגדרות'];
+  }
+  final snacks = allowed.where((food) => food.category == 'חטיפים וממתקים').toList();
+  if (snacks.isEmpty) {
+    return _rankFoodsByTiers(state, allowed).take(3).map((food) => food.name).toList();
+  }
+  return _rankFoodsByTiers(state, snacks).take(3).map((food) => food.name).toList();
 }

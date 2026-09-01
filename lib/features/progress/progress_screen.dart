@@ -14,10 +14,11 @@ class ProgressScreen extends StatelessWidget {
       builder: (context, _) {
         final nutrition = _percent(state.caloriesEaten, state.calorieTarget);
         final workout = state.workoutCompleted ? 100 : 0;
-        final steps = _percent(state.steps, state.stepsTarget);
         final water = _percent(state.waterCups, state.waterTarget);
-        final score =
-            (nutrition * .4 + workout * .25 + steps * .2 + water * .15).round();
+        // Steps dropped from the score (and the row below) per feedback --
+        // weight redistributed among the remaining three so the score stays
+        // consistent with what's actually displayed.
+        final score = (nutrition * .5 + workout * .3 + water * .2).round();
         final history = state.weights.reversed.take(8).toList();
 
         return Material(
@@ -53,6 +54,7 @@ class ProgressScreen extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '$score%',
+                        key: const Key('consistency_score'),
                         style: const TextStyle(
                           fontSize: 48,
                           fontWeight: FontWeight.w900,
@@ -76,7 +78,6 @@ class ProgressScreen extends StatelessWidget {
               const SizedBox(height: 8),
               _progressRow(context, 'תזונה', nutrition),
               _progressRow(context, 'אימון', workout),
-              _progressRow(context, 'צעדים', steps),
               _progressRow(context, 'מים', water),
               const SizedBox(height: 18),
               Text(

@@ -133,4 +133,57 @@ void main() {
       expect(state.smartFoodSuggestions, ['לא מצאתי כרגע מזון מתאים לכל ההגדרות']);
     },
   );
+
+  test(
+    'smartSnackSuggestions only offers foods from the snacks/sweets category, '
+    'not the top-ranked food overall',
+    () {
+      final state = AppState();
+      // Isolate the pool with the same "eat the whole catalog" trick used
+      // above, so only these two custom candidates can be suggested.
+      _eatEntireCatalog(state);
+      final mainMeal = _testFood(
+        id: 'test_main_meal',
+        name: 'מזון עיקרי',
+        protein: 40,
+        calories: 100, // far more protein-efficient than the snack below
+      );
+      final snack = FoodItem(
+        id: 'test_snack',
+        name: 'חטיף בריא',
+        category: 'חטיפים וממתקים',
+        type: KosherFoodType.pareve,
+        caloriesPer100g: 100,
+        proteinPer100g: 1,
+        carbsPer100g: 0,
+        fatPer100g: 0,
+        units: {'גרם': 1},
+      );
+      state.addCustomFood(mainMeal);
+      state.addCustomFood(snack);
+
+      expect(state.smartFoodSuggestions.first, mainMeal.name);
+      expect(state.smartSnackSuggestions, [snack.name]);
+    },
+  );
+
+  test(
+    'smartSnackSuggestions falls back to the general ranking when the allowed '
+    'catalog has no snack-category items at all',
+    () {
+      final state = AppState();
+
+      expect(state.smartSnackSuggestions, state.smartFoodSuggestions);
+    },
+  );
+
+  test(
+    'smartSnackSuggestions falls back to the existing message when the allowed '
+    'catalog is empty',
+    () {
+      final state = _EmptyCatalogAppState();
+
+      expect(state.smartSnackSuggestions, ['לא מצאתי כרגע מזון מתאים לכל ההגדרות']);
+    },
+  );
 }
