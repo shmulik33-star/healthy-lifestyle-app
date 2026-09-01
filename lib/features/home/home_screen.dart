@@ -367,7 +367,6 @@ class _QuickActionTile extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.value,
-    this.darkContent = false,
   });
 
   final Color color;
@@ -375,13 +374,10 @@ class _QuickActionTile extends StatelessWidget {
   final String label;
   final String? value;
   final VoidCallback onTap;
-  // Sunny yellow is too light for white text/icons to stay legible -- that
-  // tile alone uses a dark-on-light treatment instead.
-  final bool darkContent;
 
   @override
   Widget build(BuildContext context) {
-    final contentColor = darkContent ? const Color(0xFF5C4400) : Colors.white;
+    const contentColor = Colors.white;
     return SizedBox(
       width: 98,
       child: Material(
@@ -409,7 +405,7 @@ class _QuickActionTile extends StatelessWidget {
                     height: 34,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: contentColor.withValues(alpha: darkContent ? .30 : .25),
+                      color: contentColor.withValues(alpha: .25),
                     ),
                     child: Icon(icon, color: contentColor, size: 17),
                   ),
