@@ -6,6 +6,7 @@ import 'food.dart';
 
 part 'app_state_coach.dart';
 part 'app_state_fitness.dart';
+part 'exercise_catalog.dart';
 part 'app_state_kosher.dart';
 part 'app_state_nutrition.dart';
 part 'app_state_profile.dart';
@@ -295,12 +296,17 @@ class CustomEquipmentItem {
 }
 
 class WorkoutExercise {
-  const WorkoutExercise(this.name,this.sets,this.reps,this.equipment,this.muscleGroup);
+  const WorkoutExercise(this.name,this.sets,this.reps,this.equipment,this.muscleGroup,{this.imageUrl});
   final String name;
   final int sets;
   final int reps;
   final String equipment;
   final String muscleGroup;
+  // Optional demo-image URL (static reference image, not an animated GIF --
+  // see ExerciseCatalogItem in exercise_catalog.dart for where this comes
+  // from). Null for exercises with no catalog match; the UI falls back to a
+  // plain icon in that case.
+  final String? imageUrl;
 }
 
 class DailySnapshot {
@@ -383,6 +389,13 @@ class AppState extends ChangeNotifier {
   // `list[i % list.length]` cycle, which handed the same weekday the same
   // meal forever.
   final List<String> recentMealKeys = [];
+  // Muscle groups trained on recent AI-picked workout days, oldest first,
+  // same LRU-window idea as recentMealKeys above (see
+  // `_recentWorkoutGroupsWindow` in app_state_fitness.dart) -- lets the AI
+  // fitness planner actually rotate the split instead of suggesting the
+  // same muscle group two days running. Local-only, like recentMealKeys:
+  // not part of exportCloudSyncState, it's a rotation aid, not user data.
+  final List<String> recentWorkoutMuscleGroups = [];
   final Map<String,bool> shoppingChecked = {};
   final List<ShoppingItem> shoppingItems = [];
   bool shoppingInitialized = false;
@@ -515,7 +528,8 @@ class AppState extends ChangeNotifier {
     'foodDislikes':foodDislikes.toList(),
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
     'meals':meals.map((e)=>e.toJson()).toList(),'weights':weights.map((e)=>e.toJson()).toList(),'equipment':equipment,
-    'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'recentMealKeys':recentMealKeys,'shoppingChecked':shoppingChecked,
+    'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'recentMealKeys':recentMealKeys,
+    'recentWorkoutMuscleGroups':recentWorkoutMuscleGroups,'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
     'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
@@ -553,6 +567,7 @@ class AppState extends ChangeNotifier {
     if (j['equipment'] is Map) { for (final e in Map<String,dynamic>.from(j['equipment']).entries) { equipment[e.key]=e.value==true; } }
     weeklyPlan..clear()..addAll(((j['weeklyPlan'] as List?)??[]).map((e)=>PlannedDay.fromJson(Map<String,dynamic>.from(e))));
     recentMealKeys..clear()..addAll(((j['recentMealKeys'] as List?)??[]).map((e)=>e.toString()));
+    recentWorkoutMuscleGroups..clear()..addAll(((j['recentWorkoutMuscleGroups'] as List?)??[]).map((e)=>e.toString()));
     shoppingChecked.clear();
     if (j['shoppingChecked'] is Map) { for (final e in Map<String,dynamic>.from(j['shoppingChecked']).entries) { shoppingChecked[e.key]=e.value==true; } }
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
@@ -938,6 +953,9 @@ class AppState extends ChangeNotifier {
   String get kosherStateText => _kosherStateText(this);
 
   Map<String, dynamic> coachAiContext() => _coachAiContext(this);
+  Map<String, dynamic> fitnessAiContext() => _fitnessAiContext(this);
+  void recordWorkoutMuscleGroups(List<String> groups) =>
+      _fitnessRecordMuscleGroups(this, groups);
 
   String coachResponse(String question){
     final q=question.trim();

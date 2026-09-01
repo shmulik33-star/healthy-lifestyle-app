@@ -4,9 +4,22 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
 import '../equipment/equipment_screen.dart';
 import '../equipment/equipment_workout.dart';
+import 'fitness_ai_service.dart';
+
+/// How FitnessScreen asks the AI fitness planner for today's exercise ids.
+/// The real implementation is FitnessAiService.pickWorkout; tests substitute
+/// a function that resolves or throws directly, so the "AI call fails ->
+/// silently keep the rule-based workout" path is exercised without needing
+/// real network. Mirrors CoachScreen's askAi seam.
+typedef FitnessPickWorkout = Future<List<String>> Function({
+  required Map<String, dynamic> context,
+  required List<Map<String, dynamic>> catalog,
+});
 
 class FitnessScreen extends StatefulWidget {
-  const FitnessScreen({super.key});
+  const FitnessScreen({super.key, this.pickWorkout = FitnessAiService.pickWorkout});
+
+  final FitnessPickWorkout pickWorkout;
 
   @override
   State<FitnessScreen> createState() => _FitnessScreenState();
@@ -14,6 +27,8 @@ class FitnessScreen extends StatefulWidget {
 
 class _FitnessScreenState extends State<FitnessScreen> {
   final Set<int> _completedExercises = <int>{};
+  List<WorkoutExercise>? _aiWorkout;
+  bool _planningAi = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +37,11 @@ class _FitnessScreenState extends State<FitnessScreen> {
       animation: state,
       builder: (context, _) {
         final customEquipment = state.customEquipment;
-        final workout = EquipmentWorkoutBuilder.combine(
-          state.todayWorkout,
-          customEquipment,
-        );
+        final workout = _aiWorkout ??
+            EquipmentWorkoutBuilder.combine(
+              state.todayWorkout,
+              customEquipment,
+            );
         final availableEquipment = <String>[
           ...state.equipment.entries
               .where((entry) => entry.value)
@@ -72,6 +88,21 @@ class _FitnessScreenState extends State<FitnessScreen> {
                   label: const Text('הציוד שלי'),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _planningAi ? null : () => _planWithAi(state),
+                icon: _planningAi
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: Text(_planningAi ? 'מתכנן אימון...' : 'תכנן לי אימון AI להיום'),
+              ),
             ),
             const SizedBox(height: 14),
             Card(
@@ -161,6 +192,10 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                     });
                                   },
                           ),
+                          if (exercise.imageUrl != null) ...[
+                            _ExerciseThumbnail(imageUrl: exercise.imageUrl!),
+                            const SizedBox(width: 10),
+                          ],
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,6 +274,42 @@ class _FitnessScreenState extends State<FitnessScreen> {
     );
   }
 
+  Future<void> _planWithAi(AppState state) async {
+    final catalog = eligibleExerciseCatalog(state);
+    setState(() => _planningAi = true);
+
+    List<WorkoutExercise>? picked;
+    try {
+      final ids = await widget.pickWorkout(
+        context: state.fitnessAiContext(),
+        catalog: catalog.map((item) => item.toAiJson()).toList(),
+      );
+      final byId = {for (final item in catalog) item.id: item};
+      picked = ids
+          .map((id) => byId[id])
+          .whereType<ExerciseCatalogItem>()
+          .map((item) => item.toWorkoutExercise())
+          .toList();
+    } catch (_) {
+      // Silent fallback -- keep whatever was already shown (the rule-based
+      // default, or a previous AI pick), same as CoachScreen's askAi
+      // failure handling. No error surfaced to the user.
+      picked = null;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _planningAi = false;
+      if (picked != null && picked.isNotEmpty) {
+        _aiWorkout = picked;
+        _completedExercises.clear();
+        state.recordWorkoutMuscleGroups(
+          picked.map((e) => e.muscleGroup).toSet().toList(),
+        );
+      }
+    });
+  }
+
   void _showAlternative(
     BuildContext context,
     AppState state,
@@ -272,6 +343,41 @@ class _FitnessScreenState extends State<FitnessScreen> {
       ),
     );
   }
+}
+
+/// Small demo-image thumbnail next to an exercise (a static reference frame,
+/// not an animated GIF -- see ExerciseCatalogItem). Falls back to a plain
+/// icon while loading or if the image fails to load, so a slow/broken image
+/// host never blocks or breaks the exercise list itself.
+class _ExerciseThumbnail extends StatelessWidget {
+  const _ExerciseThumbnail({required this.imageUrl});
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        imageUrl,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : _placeholder(),
+        errorBuilder: (context, error, stackTrace) => _placeholder(),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F6F7),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.fitness_center, size: 22, color: Colors.grey),
+      );
 }
 
 class _InfoChip extends StatelessWidget {
