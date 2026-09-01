@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
 import '../kosher/kosher_card.dart';
+import '../nutrition/add_food_to_catalog_screen.dart';
 import '../nutrition/add_meal_sheet.dart';
 import '../profile/profile_screen.dart';
 
@@ -21,7 +22,7 @@ class HomeScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => Container(
-        color: AppTheme.cream,
+        color: AppTheme.background,
         child: Stack(
           children: [
             // Soft decorative blobs, matching the chosen mockup -- purely
@@ -54,7 +55,7 @@ class HomeScreen extends StatelessWidget {
                               fontFamily: 'Rubik',
                               fontWeight: FontWeight.w900,
                               fontSize: 26,
-                              color: AppTheme.warmInk,
+                              color: AppTheme.ink,
                               height: 1.1,
                             ),
                           ),
@@ -101,10 +102,10 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
 
-                // Quick actions -- the most-used, fastest-to-reach things on
-                // this screen, front and center as colorful tappable tiles.
-                // "צעדים" is dropped here per the redesign brief; the
-                // underlying step data/screen are untouched.
+                // Quick actions -- per feedback, trimmed to the three the
+                // product owner actually reaches for from this screen
+                // (weight/workout/coach are still one tap away via the
+                // bottom nav, so nothing is lost, just decluttered).
                 SizedBox(
                   height: 128,
                   child: SingleChildScrollView(
@@ -136,28 +137,20 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 12),
                         _QuickActionTile(
-                          color: AppTheme.lavender,
-                          icon: Icons.monitor_weight_outlined,
-                          label: 'משקל',
-                          value: '${state.currentWeight.toStringAsFixed(1)} ק״ג',
-                          onTap: () => _logWeight(context, state),
-                        ),
-                        const SizedBox(width: 12),
-                        _QuickActionTile(
-                          color: AppTheme.sunny,
-                          darkContent: true,
-                          icon: Icons.fitness_center,
-                          label: state.workoutCompleted ? 'אימון בוצע ✓' : 'אימון היום',
-                          onTap: () => onNavigate(2),
-                        ),
-                        const SizedBox(width: 12),
-                        _QuickActionTile(
                           color: AppTheme.mint,
-                          icon: Icons.smart_toy_outlined,
-                          label: 'המאמן שלי',
-                          onTap: () => onNavigate(4),
+                          icon: Icons.add_box_outlined,
+                          label: 'הוסף מזון למאגר',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => AppStateScope(
+                                state: state,
+                                child: AddFoodToCatalogScreen(state: state),
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 24),
                       ],
                     ),
                   ),
@@ -188,7 +181,7 @@ class HomeScreen extends StatelessWidget {
                                 fontFamily: 'Rubik',
                                 fontWeight: FontWeight.w900,
                                 fontSize: 32,
-                                color: AppTheme.warmInk,
+                                color: AppTheme.ink,
                                 height: 1,
                               ),
                             ),
@@ -272,7 +265,7 @@ class HomeScreen extends StatelessWidget {
                           const SizedBox(width: 8),
                           const Text(
                             'ההמלצה שלי עכשיו',
-                            style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.warmInk),
+                            style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.ink),
                           ),
                         ],
                       ),
@@ -326,50 +319,6 @@ class HomeScreen extends StatelessWidget {
           duration: const Duration(seconds: 2),
         ),
       );
-  }
-
-  void _logWeight(BuildContext context, AppState state) {
-    final controller = TextEditingController(text: state.currentWeight.toStringAsFixed(1));
-
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('הוסף שקילה'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'משקל בק״ג',
-            helperText: 'אפשר להזין לדוגמה 92.4',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('ביטול'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final normalized = controller.text.trim().replaceAll(',', '.');
-              final value = double.tryParse(normalized);
-              if (value == null || value <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('נא להזין משקל תקין.')),
-                );
-                return;
-              }
-              state.addWeight(value);
-              Navigator.pop(dialogContext);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('השקילה נשמרה.')),
-              );
-            },
-            child: const Text('שמור'),
-          ),
-        ],
-      ),
-    );
   }
 
   void _snack(BuildContext context, AppState state) {
@@ -434,7 +383,7 @@ class _QuickActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final contentColor = darkContent ? const Color(0xFF5C4400) : Colors.white;
     return SizedBox(
-      width: 86,
+      width: 98,
       child: Material(
         color: color,
         borderRadius: BorderRadius.circular(22),
@@ -468,9 +417,13 @@ class _QuickActionTile extends StatelessWidget {
                   Text(
                     value ?? label,
                     textAlign: TextAlign.center,
-                    maxLines: 1,
+                    // A value-less tile's label is the only line it shows,
+                    // so a longer one (e.g. "הוסף מזון למאגר") gets to wrap
+                    // instead of ellipsizing; a value tile keeps 1 line to
+                    // leave room for its secondary label line below.
+                    maxLines: value == null ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w700, color: contentColor, fontSize: 12.5),
+                    style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w700, color: contentColor, fontSize: 12.5, height: 1.2),
                   ),
                   if (value != null) ...[
                     const SizedBox(height: 2),

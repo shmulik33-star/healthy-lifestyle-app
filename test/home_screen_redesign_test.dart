@@ -35,49 +35,31 @@ void main() {
     expect(find.byIcon(Icons.directions_walk), findsNothing);
   });
 
-  testWidgets('quick actions for eating, water, weight and today\'s workout are all present', (tester) async {
+  testWidgets(
+    'quick actions are trimmed to exactly eating, water and add-to-catalog per feedback '
+    '-- weight/workout/coach are one tap away via the bottom nav instead',
+    (tester) async {
+      _useTallTestSurface(tester);
+      await tester.pumpWidget(wrap(AppState()));
+      expect(find.text('אכלתי'), findsOneWidget);
+      expect(find.text('כוסות מים'), findsOneWidget);
+      expect(find.text('הוסף מזון למאגר'), findsOneWidget);
+      expect(find.text('משקל'), findsNothing);
+      expect(find.text('אימון היום'), findsNothing);
+      expect(find.text('המאמן שלי'), findsNothing);
+    },
+  );
+
+  testWidgets('tapping "הוסף מזון למאגר" opens the add-to-catalog screen', (tester) async {
     _useTallTestSurface(tester);
     await tester.pumpWidget(wrap(AppState()));
-    expect(find.text('אכלתי'), findsOneWidget);
-    expect(find.text('כוסות מים'), findsOneWidget);
-    expect(find.text('משקל'), findsOneWidget);
-    expect(find.text('אימון היום'), findsOneWidget);
-  });
 
-  testWidgets('tapping the weight quick action logs a new weight entry', (tester) async {
-    final state = AppState()..currentWeight = 80;
-    final before = state.weights.length;
-
-    _useTallTestSurface(tester);
-    await tester.pumpWidget(wrap(state));
-
-    await tester.tap(find.text('משקל'));
+    await tester.tap(find.text('הוסף מזון למאגר'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '79.5');
-    await tester.tap(find.text('שמור'));
-    await tester.pumpAndSettle();
-
-    expect(state.currentWeight, 79.5);
-    expect(state.weights.length, before + 1);
-    expect(find.textContaining('השקילה נשמרה'), findsOneWidget);
-  });
-
-  testWidgets('an invalid weight is rejected without saving', (tester) async {
-    final state = AppState()..currentWeight = 80;
-    final before = state.weights.length;
-
-    _useTallTestSurface(tester);
-    await tester.pumpWidget(wrap(state));
-
-    await tester.tap(find.text('משקל'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField), 'not a number');
-    await tester.tap(find.text('שמור'));
-    await tester.pumpAndSettle();
-
-    expect(state.weights.length, before);
-    expect(find.textContaining('נא להזין משקל תקין'), findsOneWidget);
+    // AddFoodToCatalogScreen's own AppBar title text is identical to the
+    // button that opens it ("הוסף מזון למאגר"), so that alone wouldn't
+    // prove navigation happened -- this heading is unique to that screen.
+    expect(find.text('צילום תווית + AI'), findsOneWidget);
   });
 }
