@@ -86,4 +86,82 @@ void main() {
       expect(find.textContaining('תשובה חמה מה-AI'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'voice chat degrades gracefully when speech recognition is unavailable '
+    '(as in this widget-test environment, with no real browser speech API) '
+    '-- no mic button, and typing still works',
+    (tester) async {
+      _useTallTestSurface(tester);
+      final state = AppState();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppStateScope(
+            state: state,
+            child: Scaffold(
+              body: CoachScreen(
+                askAi: ({
+                  required String question,
+                  required List<CoachMessage> history,
+                  required Map<String, dynamic> context,
+                }) async =>
+                    'תשובה',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.mic), findsNothing);
+      expect(find.byIcon(Icons.mic_none), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'שאלה שהוקלדה');
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('שאלה שהוקלדה'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the speaker mute toggle flips its icon and does not crash the screen '
+    '-- flutter_tts has no real browser speech-synthesis engine in this '
+    'widget-test environment, so speaking a reply is expected to silently '
+    'no-op rather than throw',
+    (tester) async {
+      _useTallTestSurface(tester);
+      final state = AppState();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppStateScope(
+            state: state,
+            child: Scaffold(
+              body: CoachScreen(
+                askAi: ({
+                  required String question,
+                  required List<CoachMessage> history,
+                  required Map<String, dynamic> context,
+                }) async =>
+                    'תשובה חמה מה-AI',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.volume_up));
+      await tester.pump();
+      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+
+      // With replies-aloud now off, a real reply still arrives normally.
+      await tester.tap(find.text('אני רעב'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('תשובה חמה מה-AI'), findsOneWidget);
+    },
+  );
 }

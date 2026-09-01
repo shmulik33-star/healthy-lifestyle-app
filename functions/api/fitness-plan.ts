@@ -132,6 +132,23 @@ recentMuscleGroups -- muscle groups already trained on recent days) to:
   weight loss or general fitness -- but every pick must still come from the
   catalog.
 
+Selection should reflect well-established exercise-science consensus, not
+just "pick something from each group" at random:
+- Prioritize compound, multi-joint movements (e.g. squat/press/row/pull/hinge
+  patterns) over single-joint isolation picks when the catalog offers both
+  for a needed muscle group -- compounds train more muscle per exercise and
+  are the backbone of most evidence-based programs.
+- Favor training a muscle group roughly every 48-72 hours over very long
+  gaps between sessions for the same group (frequency supports better
+  results than the same weekly volume crammed rarely) -- this is what
+  recentMuscleGroups rotation above is for.
+- For workoutDaysPerWeek that's low (e.g. 2-3), lean toward full-body /
+  compound-heavy sessions each time rather than narrow splits; for higher
+  frequency, a body-part split is reasonable.
+Never present this as citing a specific study or live statistic -- it's
+general, broadly-accepted training guidance being applied to catalog
+selection, not a claim of real-time or personalized medical research.
+
 Return exactly one JSON object with a single key: exerciseIds (an array of
 catalog id strings, in the order the workout should be performed).
 `;
