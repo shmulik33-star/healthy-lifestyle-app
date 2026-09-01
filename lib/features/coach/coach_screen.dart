@@ -1,8 +1,55 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../../shared/models/app_state.dart';
 import 'coach_ai_service.dart';
+
+// Desktop Chrome's speech synthesis has a well-known bug: a single utterance
+// over roughly 200-250 characters (or ~15 seconds of speech) just stops
+// mid-sentence. Speaking each sentence -- and, for a genuine run-on
+// sentence, each word-wrapped piece of one -- as its own utterance keeps
+// every individual utterance well under that threshold, so a longer coach
+// reply is heard in full instead of getting cut off partway through.
+// Top-level (not a private method) and `@visibleForTesting` so the pure
+// splitting logic has direct unit test coverage without needing a real
+// browser speech engine.
+@visibleForTesting
+const maxSpeechChunkLength = 200;
+
+@visibleForTesting
+List<String> splitReplyIntoSpeechChunks(String text) {
+  final sentences = <String>[];
+  final buffer = StringBuffer();
+  for (final char in text.split('')) {
+    buffer.write(char);
+    if (char == '.' || char == '!' || char == '?' || char == '\n') {
+      final sentence = buffer.toString().trim();
+      if (sentence.isNotEmpty) sentences.add(sentence);
+      buffer.clear();
+    }
+  }
+  final remainder = buffer.toString().trim();
+  if (remainder.isNotEmpty) sentences.add(remainder);
+
+  return sentences.expand(_wrapIfTooLong).toList();
+}
+
+List<String> _wrapIfTooLong(String sentence) {
+  if (sentence.length <= maxSpeechChunkLength) return [sentence];
+  final chunks = <String>[];
+  final buffer = StringBuffer();
+  for (final word in sentence.split(' ')) {
+    if (buffer.isNotEmpty && buffer.length + word.length + 1 > maxSpeechChunkLength) {
+      chunks.add(buffer.toString());
+      buffer.clear();
+    }
+    if (buffer.isNotEmpty) buffer.write(' ');
+    buffer.write(word);
+  }
+  if (buffer.isNotEmpty) chunks.add(buffer.toString());
+  return chunks;
+}
 
 /// How CoachScreen asks the AI coach for a reply. The real implementation
 /// is CoachAiService.ask; tests substitute a function that resolves or
@@ -50,6 +97,10 @@ class _CoachScreenState extends State<CoachScreen> {
     super.initState();
     _initSpeech();
     _runSafely(() => _tts.setLanguage('he-IL'));
+    // Without this, speak() resolves as soon as the browser *accepts* the
+    // utterance, not when it finishes -- _speakReply below needs each chunk
+    // to actually finish before starting the next one.
+    _runSafely(() => _tts.awaitSpeakCompletion(true));
   }
 
   // Both plugins reach a real browser API (Web Speech recognition/
@@ -63,6 +114,13 @@ class _CoachScreenState extends State<CoachScreen> {
       await action();
     } catch (_) {
       // Deliberately swallowed -- see comment above.
+    }
+  }
+
+  Future<void> _speakReply(String text) async {
+    for (final chunk in splitReplyIntoSpeechChunks(text)) {
+      if (!_speakRepliesAloud) return;
+      await _runSafely(() => _tts.speak(chunk));
     }
   }
 
@@ -110,7 +168,12 @@ class _CoachScreenState extends State<CoachScreen> {
     await _runSafely(_tts.stop);
     setState(() => _listening = true);
     await _runSafely(() => _speech.listen(
-          listenOptions: SpeechListenOptions(localeId: 'he_IL'),
+          // BCP-47 format (hyphen, matching flutter_tts's setLanguage below)
+          // -- the browser's SpeechRecognition.lang expects this exact
+          // shape. The underscore form ("he_IL") is invalid here and made
+          // the recognizer silently fall back to the browser's own
+          // language instead of listening for Hebrew.
+          listenOptions: SpeechListenOptions(localeId: 'he-IL'),
           onResult: (result) {
             input.text = result.recognizedWords;
             input.selection = TextSelection.collapsed(offset: input.text.length);
@@ -272,6 +335,6 @@ class _CoachScreenState extends State<CoachScreen> {
       messages.add(CoachMessage(role: CoachRole.coach, text: reply));
       _asking = false;
     });
-    if (_speakRepliesAloud) _runSafely(() => _tts.speak(reply));
+    if (_speakRepliesAloud) _speakReply(reply);
   }
 }
