@@ -36,6 +36,8 @@ class EquipmentWorkoutBuilder {
         15,
         name,
         'גב',
+        imageUrl: exerciseCatalogById('Band_Pull_Apart')?.imageUrl,
+        imageUrl2: exerciseCatalogById('Band_Pull_Apart')?.imageUrl2,
       );
     }
 
@@ -49,6 +51,8 @@ class EquipmentWorkoutBuilder {
         10,
         name,
         'יד קדמית',
+        imageUrl: exerciseCatalogById('Dumbbell_Bicep_Curl')?.imageUrl,
+        imageUrl2: exerciseCatalogById('Dumbbell_Bicep_Curl')?.imageUrl2,
       );
     }
 
@@ -83,6 +87,8 @@ class EquipmentWorkoutBuilder {
         12,
         name,
         'גב',
+        imageUrl: exerciseCatalogById('Full_Range-Of-Motion_Lat_Pulldown')?.imageUrl,
+        imageUrl2: exerciseCatalogById('Full_Range-Of-Motion_Lat_Pulldown')?.imageUrl2,
       );
     }
 
@@ -93,6 +99,8 @@ class EquipmentWorkoutBuilder {
         12,
         name,
         'גב',
+        imageUrl: exerciseCatalogById('Seated_Cable_Rows')?.imageUrl,
+        imageUrl2: exerciseCatalogById('Seated_Cable_Rows')?.imageUrl2,
       );
     }
 
@@ -103,6 +111,8 @@ class EquipmentWorkoutBuilder {
         10,
         name,
         'יד קדמית',
+        imageUrl: exerciseCatalogById('High_Cable_Curls')?.imageUrl,
+        imageUrl2: exerciseCatalogById('High_Cable_Curls')?.imageUrl2,
       );
     }
 

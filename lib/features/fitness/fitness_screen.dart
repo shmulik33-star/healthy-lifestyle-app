@@ -1,12 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
 import '../equipment/equipment_screen.dart';
 import '../equipment/equipment_workout.dart';
+import 'fitness_ai_service.dart';
+
+/// How FitnessScreen asks the AI fitness planner for today's exercise ids.
+/// The real implementation is FitnessAiService.pickWorkout; tests substitute
+/// a function that resolves or throws directly, so the "AI call fails ->
+/// silently keep the rule-based workout" path is exercised without needing
+/// real network. Mirrors CoachScreen's askAi seam.
+typedef FitnessPickWorkout = Future<List<String>> Function({
+  required Map<String, dynamic> context,
+  required List<Map<String, dynamic>> catalog,
+});
 
 class FitnessScreen extends StatefulWidget {
-  const FitnessScreen({super.key});
+  const FitnessScreen({super.key, this.pickWorkout = FitnessAiService.pickWorkout});
+
+  final FitnessPickWorkout pickWorkout;
 
   @override
   State<FitnessScreen> createState() => _FitnessScreenState();
@@ -14,6 +29,8 @@ class FitnessScreen extends StatefulWidget {
 
 class _FitnessScreenState extends State<FitnessScreen> {
   final Set<int> _completedExercises = <int>{};
+  List<WorkoutExercise>? _aiWorkout;
+  bool _planningAi = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +39,11 @@ class _FitnessScreenState extends State<FitnessScreen> {
       animation: state,
       builder: (context, _) {
         final customEquipment = state.customEquipment;
-        final workout = EquipmentWorkoutBuilder.combine(
-          state.todayWorkout,
-          customEquipment,
-        );
+        final workout = _aiWorkout ??
+            EquipmentWorkoutBuilder.combine(
+              state.todayWorkout,
+              customEquipment,
+            );
         final availableEquipment = <String>[
           ...state.equipment.entries
               .where((entry) => entry.value)
@@ -38,6 +56,9 @@ class _FitnessScreenState extends State<FitnessScreen> {
         final progress = workout.isEmpty ? 0.0 : completedCount / workout.length;
         final estimatedMinutes =
             workout.fold<int>(0, (sum, exercise) => sum + exercise.sets * 3);
+        final muscleGroupsLabel = workout.isEmpty
+            ? 'אין אימון'
+            : {for (final exercise in workout) exercise.muscleGroup}.join(' + ');
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -73,6 +94,21 @@ class _FitnessScreenState extends State<FitnessScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _planningAi ? null : () => _planWithAi(state),
+                icon: _planningAi
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: Text(_planningAi ? 'מתכנן אימון...' : 'תכנן לי אימון AI להיום'),
+              ),
+            ),
             const SizedBox(height: 14),
             Card(
               child: Padding(
@@ -96,7 +132,7 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                 'האימון של היום',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              Text('גב + יד קדמית · כ־$estimatedMinutes דקות'),
+                              Text('$muscleGroupsLabel · כ־$estimatedMinutes דקות'),
                             ],
                           ),
                         ),
@@ -161,6 +197,13 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                     });
                                   },
                           ),
+                          if (exercise.imageUrl != null) ...[
+                            _ExerciseThumbnail(
+                              imageUrl: exercise.imageUrl!,
+                              imageUrl2: exercise.imageUrl2,
+                            ),
+                            const SizedBox(width: 10),
+                          ],
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,6 +282,42 @@ class _FitnessScreenState extends State<FitnessScreen> {
     );
   }
 
+  Future<void> _planWithAi(AppState state) async {
+    final catalog = eligibleExerciseCatalog(state);
+    setState(() => _planningAi = true);
+
+    List<WorkoutExercise>? picked;
+    try {
+      final ids = await widget.pickWorkout(
+        context: state.fitnessAiContext(),
+        catalog: catalog.map((item) => item.toAiJson()).toList(),
+      );
+      final byId = {for (final item in catalog) item.id: item};
+      picked = ids
+          .map((id) => byId[id])
+          .whereType<ExerciseCatalogItem>()
+          .map((item) => item.toWorkoutExercise())
+          .toList();
+    } catch (_) {
+      // Silent fallback -- keep whatever was already shown (the rule-based
+      // default, or a previous AI pick), same as CoachScreen's askAi
+      // failure handling. No error surfaced to the user.
+      picked = null;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _planningAi = false;
+      if (picked != null && picked.isNotEmpty) {
+        _aiWorkout = picked;
+        _completedExercises.clear();
+        state.recordWorkoutMuscleGroups(
+          picked.map((e) => e.muscleGroup).toSet().toList(),
+        );
+      }
+    });
+  }
+
   void _showAlternative(
     BuildContext context,
     AppState state,
@@ -272,6 +351,124 @@ class _FitnessScreenState extends State<FitnessScreen> {
       ),
     );
   }
+}
+
+/// Demo-image thumbnail next to an exercise. free-exercise-db (the source
+/// -- see ExerciseCatalogItem) only has two static reference frames per
+/// exercise (start/end position), not a real animated GIF, so this fakes
+/// the motion by alternating imageUrl/imageUrl2 on a timer -- a simple
+/// 2-frame loop reads much more like "what the movement looks like" than a
+/// single still frame. Tapping it opens a larger view for anyone who still
+/// can't tell what's going on at list-row size. Falls back to a plain icon
+/// while loading or if an image fails to load, so a slow/broken image host
+/// never blocks or breaks the exercise list itself.
+class _ExerciseThumbnail extends StatefulWidget {
+  const _ExerciseThumbnail({required this.imageUrl, this.imageUrl2});
+  final String imageUrl;
+  final String? imageUrl2;
+
+  @override
+  State<_ExerciseThumbnail> createState() => _ExerciseThumbnailState();
+}
+
+class _ExerciseThumbnailState extends State<_ExerciseThumbnail> {
+  Timer? _timer;
+  bool _showSecondFrame = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.imageUrl2 != null) {
+      _timer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+        if (!mounted) return;
+        setState(() => _showSecondFrame = !_showSecondFrame);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUrl =
+        (_showSecondFrame && widget.imageUrl2 != null) ? widget.imageUrl2! : widget.imageUrl;
+    return GestureDetector(
+      onTap: () => _openLarge(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.network(
+          currentUrl,
+          width: 88,
+          height: 88,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : _placeholder(),
+          errorBuilder: (context, error, stackTrace) => _placeholder(),
+        ),
+      ),
+    );
+  }
+
+  void _openLarge(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  widget.imageUrl,
+                  width: 260,
+                  height: 260,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                    width: 260,
+                    height: 260,
+                    child: Icon(Icons.fitness_center, size: 48, color: Colors.grey),
+                  ),
+                ),
+              ),
+              if (widget.imageUrl2 != null) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    widget.imageUrl2!,
+                    width: 260,
+                    height: 260,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('סגור'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        width: 88,
+        height: 88,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F6F7),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.fitness_center, size: 30, color: Colors.grey),
+      );
 }
 
 class _InfoChip extends StatelessWidget {
