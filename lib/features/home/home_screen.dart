@@ -6,6 +6,10 @@ import '../kosher/kosher_card.dart';
 import '../nutrition/add_meal_sheet.dart';
 import '../profile/profile_screen.dart';
 
+/// "Energetic/playful" home screen -- the direction the product owner
+/// picked out of three mockup options drafted for this redesign (saturated
+/// accent colors per action, soft background blobs, bold Rubik display
+/// type). See app/shell.dart for the matching floating bottom nav bar.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, required this.onNavigate});
 
@@ -16,180 +20,293 @@ class HomeScreen extends StatelessWidget {
     final state = AppStateScope.of(context);
     return AnimatedBuilder(
       animation: state,
-      builder: (context, _) => ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
+      builder: (context, _) => Container(
+        color: AppTheme.cream,
+        child: Stack(
+          children: [
+            // Soft decorative blobs, matching the chosen mockup -- purely
+            // background texture, no interaction, so plain Positioned
+            // circles rather than anything that competes for touch.
+            Positioned(
+              top: -60,
+              left: -70,
+              child: _Blob(color: const Color(0xFFFFE1A8), size: 220, opacity: .6),
+            ),
+            Positioned(
+              top: 120,
+              right: -90,
+              child: _Blob(color: const Color(0xFFCFF3EA), size: 180, opacity: .7),
+            ),
+            ListView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('היום שלי', style: Theme.of(context).textTheme.headlineSmall),
-                    Text('שלום ${state.firstName}, כל צעד קטן מצטרף לתמונה הגדולה.'),
-                  ],
-                ),
-              ),
-              InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => AppStateScope(
-                      state: state,
-                      child: const ProfileScreen(),
-                    ),
-                  ),
-                ),
-                child: const CircleAvatar(
-                  backgroundColor: AppTheme.softGreen,
-                  child: Icon(Icons.person_outline),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          // Quick actions -- the most-used, fastest-to-reach things on this
-          // screen, front and center as colorful tappable tiles instead of
-          // buried in the button row at the bottom (per the redesign brief:
-          // "אכלתי", "כוסות מים", and whatever's most valuable to have handy
-          // -- weight logging had no home-screen entry point at all before,
-          // and today's workout status is worth a glance without a tab
-          // switch. "צעדים" is dropped here per the brief; the underlying
-          // step data/screen are untouched, this is a home-screen-only cut).
-          SizedBox(
-            height: 104,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _QuickActionTile(
-                    color: AppTheme.green,
-                    icon: Icons.restaurant,
-                    label: 'אכלתי',
-                    onTap: () => showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => AppStateScope(
-                        state: state,
-                        child: const AddMealSheet(),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'היי, ${state.firstName}',
+                            style: const TextStyle(
+                              fontFamily: 'Rubik',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 26,
+                              color: AppTheme.warmInk,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'כל צעד קטן מצטרף לתמונה הגדולה',
+                            style: TextStyle(fontSize: 14, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickActionTile(
-                    key: const Key('water_metric_card'),
-                    color: AppTheme.blue,
-                    icon: Icons.water_drop_outlined,
-                    label: 'כוסות מים',
-                    value: '${state.waterCups}/${state.waterTarget}',
-                    onTap: () => _addWater(context, state),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickActionTile(
-                    color: AppTheme.purple,
-                    icon: Icons.monitor_weight_outlined,
-                    label: 'משקל',
-                    value: '${state.currentWeight.toStringAsFixed(1)} ק״ג',
-                    onTap: () => _logWeight(context, state),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickActionTile(
-                    color: AppTheme.orange,
-                    icon: Icons.fitness_center,
-                    label: state.workoutCompleted ? 'אימון בוצע ✓' : 'אימון היום',
-                    onTap: () => onNavigate(2),
-                  ),
-                  const SizedBox(width: 10),
-                  _QuickActionTile(
-                    color: AppTheme.green,
-                    icon: Icons.smart_toy_outlined,
-                    label: 'המאמן שלי',
-                    onTap: () => onNavigate(4),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  _CalorieRing(
-                    eaten: state.caloriesEaten,
-                    target: state.calorieTarget,
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${state.caloriesEaten}',
-                          style: const TextStyle(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.green,
+                    InkWell(
+                      borderRadius: BorderRadius.circular(26),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => AppStateScope(
+                            state: state,
+                            child: const ProfileScreen(),
                           ),
                         ),
-                        Text('מתוך ${state.calorieTarget} קלוריות'),
-                        const SizedBox(height: 8),
-                        Text(
-                          'חלבון: ${state.proteinEaten.toStringAsFixed(0)}/${state.proteinTarget} גרם',
-                          style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFF9B6A), AppTheme.coral],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.coral.withValues(alpha: .35),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
+                        child: const Icon(Icons.person_outline, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Quick actions -- the most-used, fastest-to-reach things on
+                // this screen, front and center as colorful tappable tiles.
+                // "צעדים" is dropped here per the redesign brief; the
+                // underlying step data/screen are untouched.
+                SizedBox(
+                  height: 108,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 24),
+                        _QuickActionTile(
+                          color: AppTheme.coral,
+                          icon: Icons.restaurant,
+                          label: 'אכלתי',
+                          onTap: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) => AppStateScope(
+                              state: state,
+                              child: const AddMealSheet(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        _QuickActionTile(
+                          key: const Key('water_metric_card'),
+                          color: AppTheme.teal,
+                          icon: Icons.water_drop_outlined,
+                          label: 'כוסות מים',
+                          value: '${state.waterCups}/${state.waterTarget}',
+                          onTap: () => _addWater(context, state),
+                        ),
+                        const SizedBox(width: 12),
+                        _QuickActionTile(
+                          color: AppTheme.lavender,
+                          icon: Icons.monitor_weight_outlined,
+                          label: 'משקל',
+                          value: '${state.currentWeight.toStringAsFixed(1)} ק״ג',
+                          onTap: () => _logWeight(context, state),
+                        ),
+                        const SizedBox(width: 12),
+                        _QuickActionTile(
+                          color: AppTheme.sunny,
+                          darkContent: true,
+                          icon: Icons.fitness_center,
+                          label: state.workoutCompleted ? 'אימון בוצע ✓' : 'אימון היום',
+                          onTap: () => onNavigate(2),
+                        ),
+                        const SizedBox(width: 12),
+                        _QuickActionTile(
+                          color: AppTheme.mint,
+                          icon: Icons.smart_toy_outlined,
+                          label: 'המאמן שלי',
+                          onTap: () => onNavigate(4),
+                        ),
+                        const SizedBox(width: 12),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('התמונה האישית שלי', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
                 const SizedBox(height: 6),
-                Text('${state.primaryGoal} · ${state.workoutDaysPerWeek} אימונים בשבוע · פעילות ${state.activityLevel}'),
-                const SizedBox(height: 6),
-                Text(state.dailyInsight),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const KosherCard(),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('ההמלצה שלי עכשיו', style: TextStyle(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 6),
-                  Text(state.coachResponse('מה כדאי לי לאכול עכשיו?')),
-                  const SizedBox(height: 10),
-                  ...state.smartFoodSuggestions.take(3).map(
-                        (suggestion) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text('• $suggestion'),
+
+                // Calorie hero
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 26, offset: const Offset(0, 10)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      _CalorieRing(eaten: state.caloriesEaten, target: state.calorieTarget),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${state.caloriesEaten}',
+                              style: const TextStyle(
+                                fontFamily: 'Rubik',
+                                fontWeight: FontWeight.w900,
+                                fontSize: 32,
+                                color: AppTheme.warmInk,
+                                height: 1,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'מתוך ${state.calorieTarget} קלוריות',
+                              style: const TextStyle(fontSize: 13, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF4EEE4),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${state.proteinEaten.toStringAsFixed(0)}/${state.proteinTarget}',
+                                    style: const TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.lavender),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text('גרם חלבון', style: TextStyle(fontSize: 11, color: AppTheme.warmMuted, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                ],
-              ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Goal card
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  decoration: BoxDecoration(color: AppTheme.softMint, borderRadius: BorderRadius.circular(24)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'התמונה האישית שלי',
+                        style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF1E5B3B)),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${state.primaryGoal} · ${state.workoutDaysPerWeek} אימונים בשבוע · פעילות ${state.activityLevel}',
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF3D6B52), fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        state.dailyInsight,
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF1E5B3B), fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                const KosherCard(),
+                const SizedBox(height: 14),
+
+                // Recommendation card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 16, offset: const Offset(0, 6)),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.lightbulb_outline, color: AppTheme.sunny, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'ההמלצה שלי עכשיו',
+                            style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.warmInk),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        state.coachResponse('מה כדאי לי לאכול עכשיו?'),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF5A4E3E), fontWeight: FontWeight.w600, height: 1.5),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final entry in state.smartFoodSuggestions.take(3).toList().asMap().entries)
+                            _SuggestionChip(text: entry.value, colorIndex: entry.key),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => _snack(context, state),
+                    icon: const Icon(Icons.cookie_outlined, color: AppTheme.warmMuted),
+                    label: const Text('בא לי לנשנש', style: TextStyle(color: AppTheme.warmMuted, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 14),
-          OutlinedButton.icon(
-            onPressed: () => _snack(context, state),
-            icon: const Icon(Icons.cookie_outlined),
-            label: const Text('בא לי לנשנש'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -273,11 +390,27 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/// Prominent, colorful tappable tile for a home-screen quick action --
-/// deliberately more visually distinct than a plain card+icon (per the
-/// redesign brief's "עיצוב מעניין"): a tinted background in the action's
-/// own accent color rather than a uniform neutral card, so the row reads
-/// as a set of choices at a glance instead of a wall of identical tiles.
+class _Blob extends StatelessWidget {
+  const _Blob({required this.color, required this.size, required this.opacity});
+  final Color color;
+  final double size;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color.withValues(alpha: opacity), shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+/// Prominent, colorful tappable tile for a home-screen quick action -- a
+/// filled accent-color pill (not a tinted-neutral card) with the icon in a
+/// translucent white circle, matching the chosen "energetic" mockup.
 class _QuickActionTile extends StatelessWidget {
   const _QuickActionTile({
     super.key,
@@ -286,6 +419,7 @@ class _QuickActionTile extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.value,
+    this.darkContent = false,
   });
 
   final Color color;
@@ -293,42 +427,63 @@ class _QuickActionTile extends StatelessWidget {
   final String label;
   final String? value;
   final VoidCallback onTap;
+  // Sunny yellow is too light for white text/icons to stay legible -- that
+  // tile alone uses a dark-on-light treatment instead.
+  final bool darkContent;
 
   @override
   Widget build(BuildContext context) {
+    final contentColor = darkContent ? const Color(0xFF5C4400) : Colors.white;
     return SizedBox(
-      width: 96,
+      width: 86,
       child: Material(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(18),
+        color: color,
+        borderRadius: BorderRadius.circular(22),
+        elevation: 0,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: color, size: 26),
-                const SizedBox(height: 6),
-                Text(
-                  value ?? label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w800, color: color, fontSize: 13),
-                ),
-                if (value != null) ...[
-                  const SizedBox(height: 2),
+          borderRadius: BorderRadius.circular(22),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(color: color.withValues(alpha: .30), blurRadius: 16, offset: const Offset(0, 8)),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: contentColor.withValues(alpha: darkContent ? .30 : .25),
+                    ),
+                    child: Icon(icon, color: contentColor, size: 19),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    label,
+                    value ?? label,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w700, color: contentColor, fontSize: 12.5),
                   ),
+                  if (value != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: contentColor.withValues(alpha: .85), fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -337,9 +492,7 @@ class _QuickActionTile extends StatelessWidget {
   }
 }
 
-/// Circular calorie-progress ring for the hero card -- a lighter full-circle
-/// track behind the actual progress arc, same idea as the old
-/// LinearProgressIndicator but reads as more "designed" at a glance.
+/// Circular calorie-progress ring for the hero card, in the coral accent.
 class _CalorieRing extends StatelessWidget {
   const _CalorieRing({required this.eaten, required this.target});
   final int eaten;
@@ -354,14 +507,10 @@ class _CalorieRing extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          SizedBox(
+          const SizedBox(
             width: 72,
             height: 72,
-            child: CircularProgressIndicator(
-              value: 1,
-              strokeWidth: 8,
-              color: AppTheme.softGreen,
-            ),
+            child: CircularProgressIndicator(value: 1, strokeWidth: 8, color: Color(0xFFFFE8D6)),
           ),
           SizedBox(
             width: 72,
@@ -369,13 +518,35 @@ class _CalorieRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: progress,
               strokeWidth: 8,
-              color: AppTheme.green,
+              color: AppTheme.coral,
               backgroundColor: Colors.transparent,
             ),
           ),
-          const Icon(Icons.local_fire_department, color: AppTheme.green, size: 26),
+          const Icon(Icons.local_fire_department, color: AppTheme.coral, size: 26),
         ],
       ),
+    );
+  }
+}
+
+/// Colored chip for a food suggestion in the recommendation card -- rotates
+/// through the coral/teal/lavender accents so the row reads as playful
+/// rather than a flat list.
+class _SuggestionChip extends StatelessWidget {
+  const _SuggestionChip({required this.text, required this.colorIndex});
+  final String text;
+  final int colorIndex;
+
+  static const _backgrounds = [Color(0xFFFFF3E4), Color(0xFFEAF6FF), Color(0xFFF3EEFF)];
+  static const _foregrounds = [Color(0xFFB4620E), Color(0xFF1878A8), Color(0xFF6A4FC7)];
+
+  @override
+  Widget build(BuildContext context) {
+    final i = colorIndex % _backgrounds.length;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: _backgrounds[i], borderRadius: BorderRadius.circular(999)),
+      child: Text(text, style: TextStyle(color: _foregrounds[i], fontWeight: FontWeight.w700, fontSize: 12)),
     );
   }
 }

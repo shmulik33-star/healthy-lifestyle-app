@@ -29,6 +29,15 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <!-- App typography (Rubik for display/headings, Assistant for body) --
+       both have full Hebrew glyph coverage. Loaded here rather than via
+       the google_fonts package, which has known CORS/runtime-fetch
+       flakiness on Flutter Web; Flutter's web renderer picks up fonts
+       already available to the browser via a plain <link>. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet">
+
   <title>healthy_lifestyle_stage8</title>
   <link rel="manifest" href="manifest.json">
 </head>

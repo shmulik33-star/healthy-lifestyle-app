@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
 import '../features/coach/coach_screen.dart';
 import '../features/equipment/equipment_item.dart';
 import '../features/fitness/fitness_screen.dart';
@@ -154,34 +155,96 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             child: _pageFor(index, currentState),
           ),
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: _goTo,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'היום',
+        bottomNavigationBar: _FloatingNavBar(selectedIndex: index, onSelect: _goTo),
+      ),
+    );
+  }
+}
+
+/// Bottom navigation restyled to match the "energetic" home-screen
+/// redesign: a rounded pill detached from the screen edges (per the
+/// product owner's "שורת ניווט תחתונה צפה" request) instead of Material's
+/// flat, edge-to-edge NavigationBar. Scaffold reserves exactly this
+/// widget's height as the bottom-nav area, so the surrounding page
+/// background shows through the margin around the pill -- no extendBody
+/// or per-screen bottom-padding changes needed.
+class _FloatingNavBar extends StatelessWidget {
+  const _FloatingNavBar({required this.selectedIndex, required this.onSelect});
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  static const _destinations = [
+    (icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'היום'),
+    (icon: Icons.restaurant_outlined, selectedIcon: Icons.restaurant, label: 'תזונה'),
+    (icon: Icons.fitness_center_outlined, selectedIcon: Icons.fitness_center, label: 'כושר'),
+    (icon: Icons.bar_chart_outlined, selectedIcon: Icons.bar_chart, label: 'התקדמות'),
+    (icon: Icons.smart_toy_outlined, selectedIcon: Icons.smart_toy, label: 'המאמן'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: Container(
+          height: 68,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: .10), blurRadius: 20, offset: const Offset(0, 8)),
+            ],
+          ),
+          child: Row(
+            children: [
+              for (final (i, d) in _destinations.indexed)
+                Expanded(
+                  child: _NavItem(
+                    icon: i == selectedIndex ? d.selectedIcon : d.icon,
+                    label: d.label,
+                    selected: i == selectedIndex,
+                    onTap: () => onSelect(i),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.icon, required this.label, required this.selected, required this.onTap});
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppTheme.coral : AppTheme.warmMuted;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: selected ? AppTheme.coral.withValues(alpha: .12) : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Icon(icon, color: color, size: 22),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.restaurant_outlined),
-              selectedIcon: Icon(Icons.restaurant),
-              label: 'תזונה',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.fitness_center_outlined),
-              selectedIcon: Icon(Icons.fitness_center),
-              label: 'כושר',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.bar_chart_outlined),
-              selectedIcon: Icon(Icons.bar_chart),
-              label: 'התקדמות',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.smart_toy_outlined),
-              selectedIcon: Icon(Icons.smart_toy),
-              label: 'המאמן',
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10.5, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, color: color),
             ),
           ],
         ),
