@@ -152,6 +152,5 @@ void _fitnessRecordMuscleGroups(AppState state, List<String> groups) {
   state.recentWorkoutMuscleGroups
     ..clear()
     ..addAll(overflow > 0 ? history.sublist(overflow) : history);
-  state.notifyListeners();
   state._save();
 }

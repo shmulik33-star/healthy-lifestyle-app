@@ -954,8 +954,10 @@ class AppState extends ChangeNotifier {
 
   Map<String, dynamic> coachAiContext() => _coachAiContext(this);
   Map<String, dynamic> fitnessAiContext() => _fitnessAiContext(this);
-  void recordWorkoutMuscleGroups(List<String> groups) =>
-      _fitnessRecordMuscleGroups(this, groups);
+  void recordWorkoutMuscleGroups(List<String> groups) {
+    _fitnessRecordMuscleGroups(this, groups);
+    notifyListeners();
+  }
 
   String coachResponse(String question){
     final q=question.trim();
