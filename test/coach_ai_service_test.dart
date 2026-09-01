@@ -34,10 +34,12 @@ void main() {
     final client = MockClient((request) async {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       final history = (body['history'] as List).cast<Map<String, dynamic>>();
+      // 9 generated messages (msg0..msg8) -> last 8 kept are msg1..msg8.
       expect(history, hasLength(8));
-      expect(history.first['text'], 'msg2');
-      expect(history.last['text'], 'msg9');
-      expect(history.first['role'], 'user');
+      expect(history.first['text'], 'msg1');
+      expect(history.last['text'], 'msg8');
+      expect(history.first['role'], 'coach');
+      expect(history.last['role'], 'user');
 
       return http.Response(
         jsonEncode({'reply': 'תשובה'}),
