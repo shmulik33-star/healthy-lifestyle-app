@@ -4,6 +4,7 @@ import '../data/food_catalog.dart';
 import '../storage/app_local_storage.dart';
 import 'food.dart';
 
+part 'app_state_coach.dart';
 part 'app_state_fitness.dart';
 part 'app_state_kosher.dart';
 part 'app_state_nutrition.dart';
@@ -935,6 +936,8 @@ class AppState extends ChangeNotifier {
       _fitnessAlternativeFor(this, current);
   List<String> get smartFoodSuggestions => _nutritionSmartFoodSuggestions(this);
   String get kosherStateText => _kosherStateText(this);
+
+  Map<String, dynamic> coachAiContext() => _coachAiContext(this);
 
   String coachResponse(String question){
     final q=question.trim();
