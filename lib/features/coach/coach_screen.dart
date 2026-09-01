@@ -1,6 +1,55 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../../shared/models/app_state.dart';
 import 'coach_ai_service.dart';
+
+// Desktop Chrome's speech synthesis has a well-known bug: a single utterance
+// over roughly 200-250 characters (or ~15 seconds of speech) just stops
+// mid-sentence. Speaking each sentence -- and, for a genuine run-on
+// sentence, each word-wrapped piece of one -- as its own utterance keeps
+// every individual utterance well under that threshold, so a longer coach
+// reply is heard in full instead of getting cut off partway through.
+// Top-level (not a private method) and `@visibleForTesting` so the pure
+// splitting logic has direct unit test coverage without needing a real
+// browser speech engine.
+@visibleForTesting
+const maxSpeechChunkLength = 200;
+
+@visibleForTesting
+List<String> splitReplyIntoSpeechChunks(String text) {
+  final sentences = <String>[];
+  final buffer = StringBuffer();
+  for (final char in text.split('')) {
+    buffer.write(char);
+    if (char == '.' || char == '!' || char == '?' || char == '\n') {
+      final sentence = buffer.toString().trim();
+      if (sentence.isNotEmpty) sentences.add(sentence);
+      buffer.clear();
+    }
+  }
+  final remainder = buffer.toString().trim();
+  if (remainder.isNotEmpty) sentences.add(remainder);
+
+  return sentences.expand(_wrapIfTooLong).toList();
+}
+
+List<String> _wrapIfTooLong(String sentence) {
+  if (sentence.length <= maxSpeechChunkLength) return [sentence];
+  final chunks = <String>[];
+  final buffer = StringBuffer();
+  for (final word in sentence.split(' ')) {
+    if (buffer.isNotEmpty && buffer.length + word.length + 1 > maxSpeechChunkLength) {
+      chunks.add(buffer.toString());
+      buffer.clear();
+    }
+    if (buffer.isNotEmpty) buffer.write(' ');
+    buffer.write(word);
+  }
+  if (buffer.isNotEmpty) chunks.add(buffer.toString());
+  return chunks;
+}
 
 /// How CoachScreen asks the AI coach for a reply. The real implementation
 /// is CoachAiService.ask; tests substitute a function that resolves or
@@ -31,10 +80,113 @@ class _CoachScreenState extends State<CoachScreen> {
   ];
   bool _asking = false;
 
+  // Voice chat: mic input via the browser's speech-recognition engine
+  // (Web Speech API under the hood -- solid on Chrome/Edge, spotty on
+  // Safari, absent on Firefox), coach replies read aloud via the browser's
+  // speech-synthesis engine (near-universal support, unlike recognition).
+  // Both degrade silently: if recognition never becomes available the mic
+  // button just never appears, typing keeps working exactly as before.
+  final _speech = SpeechToText();
+  final _tts = FlutterTts();
+  bool _speechAvailable = false;
+  bool _listening = false;
+  bool _speakRepliesAloud = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+    _runSafely(() => _tts.setLanguage('he-IL'));
+    // Without this, speak() resolves as soon as the browser *accepts* the
+    // utterance, not when it finishes -- _speakReply below needs each chunk
+    // to actually finish before starting the next one.
+    _runSafely(() => _tts.awaitSpeakCompletion(true));
+  }
+
+  // Both plugins reach a real browser API (Web Speech recognition/
+  // synthesis) that's simply absent in the widget-test environment, and can
+  // throw there (missing plugin) rather than just returning false -- caught
+  // the same as a genuinely unsupported browser would be, so the mic button
+  // just never appears and speaking a reply aloud is silently skipped,
+  // instead of crashing the screen.
+  static Future<void> _runSafely(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (_) {
+      // Deliberately swallowed -- see comment above.
+    }
+  }
+
+  Future<void> _speakReply(String text) async {
+    for (final chunk in splitReplyIntoSpeechChunks(text)) {
+      if (!_speakRepliesAloud) return;
+      await _runSafely(() => _tts.speak(chunk));
+    }
+  }
+
+  Future<void> _initSpeech() async {
+    try {
+      final available = await _speech.initialize(
+        onStatus: (status) {
+          if (!mounted) return;
+          if (status == 'notListening' || status == 'done') {
+            setState(() => _listening = false);
+          }
+        },
+        // Recognition failing (denied mic permission, unsupported browser,
+        // no speech detected) should never surface as an app error -- the
+        // mic button simply stops listening and typing still works.
+        onError: (_) {
+          if (!mounted) return;
+          setState(() => _listening = false);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _speechAvailable = available);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _speechAvailable = false);
+    }
+  }
+
   @override
   void dispose() {
     input.dispose();
+    _runSafely(_speech.stop);
+    _runSafely(_tts.stop);
     super.dispose();
+  }
+
+  Future<void> _toggleListening(AppState state) async {
+    if (_listening) {
+      await _runSafely(_speech.stop);
+      setState(() => _listening = false);
+      return;
+    }
+    // A fresh mic tap always cancels any reply still being read aloud --
+    // talking over the coach while it's speaking is confusing.
+    await _runSafely(_tts.stop);
+    setState(() => _listening = true);
+    await _runSafely(() => _speech.listen(
+          // BCP-47 format (hyphen, matching flutter_tts's setLanguage below)
+          // -- the browser's SpeechRecognition.lang expects this exact
+          // shape. The underscore form ("he_IL") is invalid here and made
+          // the recognizer silently fall back to the browser's own
+          // language instead of listening for Hebrew.
+          listenOptions: SpeechListenOptions(localeId: 'he-IL'),
+          onResult: (result) {
+            input.text = result.recognizedWords;
+            input.selection = TextSelection.collapsed(offset: input.text.length);
+            if (result.finalResult) {
+              setState(() => _listening = false);
+              final q = input.text.trim();
+              if (q.isNotEmpty) {
+                _ask(state, q);
+                input.clear();
+              }
+            }
+          },
+        ));
   }
 
   @override
@@ -44,9 +196,23 @@ class _CoachScreenState extends State<CoachScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Text('המאמן שלי', style: Theme.of(context).textTheme.headlineSmall),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: _speakRepliesAloud ? 'השתק הקראת תשובות' : 'הקרא תשובות בקול',
+                onPressed: () {
+                  if (_speakRepliesAloud) _runSafely(_tts.stop);
+                  setState(() => _speakRepliesAloud = !_speakRepliesAloud);
+                },
+                icon: Icon(_speakRepliesAloud ? Icons.volume_up : Icons.volume_off),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('המאמן שלי', style: Theme.of(context).textTheme.headlineSmall),
+                ),
+              ),
+            ],
           ),
         ),
         Padding(
@@ -100,7 +266,25 @@ class _CoachScreenState extends State<CoachScreen> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                Expanded(child: TextField(controller: input, decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'כתוב למאמן...'))),
+                Expanded(
+                  child: TextField(
+                    controller: input,
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      hintText: _listening ? 'מקשיב...' : 'כתוב למאמן...',
+                    ),
+                  ),
+                ),
+                if (_speechAvailable) ...[
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _asking ? null : () => _toggleListening(state),
+                    style: _listening
+                        ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error)
+                        : null,
+                    icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 IconButton.filled(
                   onPressed: _asking
@@ -151,5 +335,6 @@ class _CoachScreenState extends State<CoachScreen> {
       messages.add(CoachMessage(role: CoachRole.coach, text: reply));
       _asking = false;
     });
+    if (_speakRepliesAloud) _speakReply(reply);
   }
 }

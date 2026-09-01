@@ -33,7 +33,7 @@ class KosherCard extends StatelessWidget {
           padding:EdgeInsets.all(16),
           child:Row(
             children:[
-              Icon(Icons.verified_outlined,color:AppTheme.green),
+              Icon(Icons.verified_outlined,color:AppTheme.mint),
               SizedBox(width:10),
               Expanded(child:Text('כשרות פעילה. לא הוגדר טיימר המתנה מבשר לחלב.')),
             ],
@@ -50,7 +50,7 @@ class KosherCard extends StatelessWidget {
           padding:EdgeInsets.all(16),
           child:Row(
             children:[
-              Icon(Icons.verified_outlined,color:AppTheme.green),
+              Icon(Icons.verified_outlined,color:AppTheme.mint),
               SizedBox(width:10),
               Expanded(child:Text('מצב כשרות: אין כרגע המתנה פעילה מבשר לחלב.')),
             ],
@@ -60,7 +60,7 @@ class KosherCard extends StatelessWidget {
     }
 
     return Card(
-      color:AppTheme.softGreen,
+      color:AppTheme.softMint,
       child:Padding(
         padding:const EdgeInsets.all(16),
         child:Row(

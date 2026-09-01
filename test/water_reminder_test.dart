@@ -55,7 +55,7 @@ void main() {
           home: AppStateScope(
             state: state,
             // HomeScreen relies on an ancestor Scaffold for its Material
-            // (AppShell always provides one around every tab) -- without
+            // (the app's real Scaffold, from shell.dart's _AppScaffold, always provides one around every tab) -- without
             // it here, the pre-existing profile-avatar InkWell throws "No
             // Material widget found" before the tree even finishes
             // building, which also breaks the water card's own tap target.
