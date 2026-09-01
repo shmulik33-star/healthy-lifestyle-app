@@ -78,6 +78,7 @@ jobs:
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/equipment-recognize" "Equipment preview"
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/nutrition-label-recognize" "Nutrition-label preview"
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/meal-estimate" "Meal-estimate preview"
+          check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat preview"
 
       - name: Set main as Cloudflare production branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -125,3 +126,4 @@ jobs:
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/equipment-recognize" "Equipment production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/nutrition-label-recognize" "Nutrition-label production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/meal-estimate" "Meal-estimate production"
+          check_endpoint "https://healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat production"
