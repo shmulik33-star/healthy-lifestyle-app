@@ -365,7 +365,7 @@ class AppState extends ChangeNotifier {
   // Minutes between in-app water reminders; 0 = off. Same pattern as
   // meatWaitMinutes: a plain profile field, last-writer-wins on cloud sync,
   // no timer state of its own persisted (the timer itself only exists while
-  // the app is open -- see AppShell).
+  // the app is open -- see AppStateGate).
   int waterReminderMinutes = 0;
   final List<FoodItem> customFoods = [];
   // Food IDs the user has marked as disliked, so AI/smart suggestions never

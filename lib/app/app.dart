@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/theme/app_theme.dart';
+import 'app_state_gate.dart';
+import 'root_messenger.dart';
 import 'shell.dart';
-
-/// App-wide messenger, so a global notice (currently just the water
-/// reminder in AppShell) can show a SnackBar regardless of which of the
-/// bottom-nav tabs is on screen, without threading a BuildContext from deep
-/// inside AppShell's own state.
-final rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class HealthyLifestyleApp extends StatelessWidget {
   const HealthyLifestyleApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: 'אורח חיים בריא',
@@ -26,11 +22,14 @@ class HealthyLifestyleApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: AppTheme.light,
+      // AppStateGate loads AppState/starts its background services once
+      // here, above every go_router route, then provides AppStateScope --
+      // see that file for why this moved out of the old AppShell.
       builder: (context, child) => Directionality(
         textDirection: TextDirection.rtl,
-        child: child ?? const SizedBox.shrink(),
+        child: AppStateGate(child: child ?? const SizedBox.shrink()),
       ),
-      home: const AppShell(),
+      routerConfig: appRouter,
     );
   }
 }

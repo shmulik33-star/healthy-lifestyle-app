@@ -46,7 +46,7 @@ void _profileUpdate(
   state.generateWeeklyPlan();
 }
 
-/// Whether a water reminder tick (see AppShell's in-app-only timer -- there
+/// Whether a water reminder tick (see AppStateGate's in-app-only timer -- there
 /// is no push notification here, only a SnackBar while the app is open) is
 /// actually worth showing right now: the user turned reminders on, and
 /// hasn't already hit today's water target. Kept as a pure function, not

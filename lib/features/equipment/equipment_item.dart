@@ -16,7 +16,7 @@ export '../../shared/models/app_state.dart' show CustomEquipmentItem;
 /// Legacy device-local store. Kept only so a device that already has custom
 /// equipment saved here (from before this data moved onto `AppState`) can
 /// have it imported once via `AppState.migrateLegacyCustomEquipment` — see
-/// `AppShell.initState` in `lib/app/shell.dart`. Nothing writes to this store
+/// `AppStateGate.initState` in `lib/app/app_state_gate.dart`. Nothing writes to this store
 /// anymore; `EquipmentScreen` reads/writes `AppState.customEquipment`
 /// instead.
 class EquipmentStore {
