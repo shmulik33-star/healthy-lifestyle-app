@@ -296,17 +296,20 @@ class CustomEquipmentItem {
 }
 
 class WorkoutExercise {
-  const WorkoutExercise(this.name,this.sets,this.reps,this.equipment,this.muscleGroup,{this.imageUrl});
+  const WorkoutExercise(this.name,this.sets,this.reps,this.equipment,this.muscleGroup,{this.imageUrl,this.imageUrl2});
   final String name;
   final int sets;
   final int reps;
   final String equipment;
   final String muscleGroup;
-  // Optional demo-image URL (static reference image, not an animated GIF --
-  // see ExerciseCatalogItem in exercise_catalog.dart for where this comes
-  // from). Null for exercises with no catalog match; the UI falls back to a
-  // plain icon in that case.
+  // Optional demo-image URLs: two static reference frames (start/end
+  // position), not an animated GIF -- see ExerciseCatalogItem in
+  // exercise_catalog.dart for where these come from. The UI alternates
+  // between them to fake motion (see _ExerciseThumbnail in
+  // fitness_screen.dart). Null for exercises with no catalog match; the UI
+  // falls back to a plain icon in that case.
   final String? imageUrl;
+  final String? imageUrl2;
 }
 
 class DailySnapshot {

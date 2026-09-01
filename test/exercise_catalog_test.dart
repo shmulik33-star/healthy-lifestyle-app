@@ -18,6 +18,9 @@ void main() {
       expect(item.reps, greaterThan(0));
       expect(item.imageUrl, startsWith('https://raw.githubusercontent.com/yuhonas/free-exercise-db/'));
       expect(item.imageUrl, contains(item.id));
+      expect(item.imageUrl2, startsWith('https://raw.githubusercontent.com/yuhonas/free-exercise-db/'));
+      expect(item.imageUrl2, contains(item.id));
+      expect(item.imageUrl2, isNot(item.imageUrl), reason: 'the two frames must be different images');
     }
     expect(kExerciseCatalog, isNotEmpty);
   });
@@ -27,11 +30,12 @@ void main() {
     expect(exerciseCatalogById('not-a-real-id'), isNull);
   });
 
-  test('toWorkoutExercise carries the image URL through', () {
+  test('toWorkoutExercise carries both image frames through', () {
     final item = exerciseCatalogById('Plank')!;
     final exercise = item.toWorkoutExercise();
     expect(exercise.name, item.nameHe);
     expect(exercise.imageUrl, item.imageUrl);
+    expect(exercise.imageUrl2, item.imageUrl2);
   });
 
   test('eligibleExerciseCatalog always includes bodyweight-only exercises', () {

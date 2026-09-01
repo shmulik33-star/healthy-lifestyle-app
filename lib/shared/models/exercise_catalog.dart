@@ -8,7 +8,9 @@ part of 'app_state.dart';
 ///
 /// Images come from free-exercise-db (github.com/yuhonas/free-exercise-db,
 /// Unlicense/public domain) -- two static reference frames per exercise
-/// (start/end position), not an animated GIF.
+/// (start/end position). There's no real animated GIF in this source, so
+/// the UI fakes the motion by alternating imageUrl/imageUrl2 on a timer
+/// (see _ExerciseThumbnail in fitness_screen.dart) instead.
 class ExerciseCatalogItem {
   const ExerciseCatalogItem({
     required this.id,
@@ -32,9 +34,17 @@ class ExerciseCatalogItem {
       'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises';
 
   String get imageUrl => '$_imageBase/$id/0.jpg';
+  String get imageUrl2 => '$_imageBase/$id/1.jpg';
 
-  WorkoutExercise toWorkoutExercise() =>
-      WorkoutExercise(nameHe, sets, reps, equipmentKey, muscleGroup, imageUrl: imageUrl);
+  WorkoutExercise toWorkoutExercise() => WorkoutExercise(
+        nameHe,
+        sets,
+        reps,
+        equipmentKey,
+        muscleGroup,
+        imageUrl: imageUrl,
+        imageUrl2: imageUrl2,
+      );
 
   // Wire shape sent to the AI fitness planner Worker -- see
   // functions/api/fitness-plan.ts's CatalogItem. Deliberately excludes

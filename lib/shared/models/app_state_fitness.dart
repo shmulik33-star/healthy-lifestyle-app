@@ -16,6 +16,7 @@ List<WorkoutExercise> _fitnessTodayWorkout(AppState state) {
       'Lat Pulldown',
       'גב',
       imageUrl: exerciseCatalogById('Full_Range-Of-Motion_Lat_Pulldown')?.imageUrl,
+      imageUrl2: exerciseCatalogById('Full_Range-Of-Motion_Lat_Pulldown')?.imageUrl2,
     ),
   );
   addIf(
@@ -27,6 +28,7 @@ List<WorkoutExercise> _fitnessTodayWorkout(AppState state) {
       'Seated Row',
       'גב',
       imageUrl: exerciseCatalogById('Seated_Cable_Rows')?.imageUrl,
+      imageUrl2: exerciseCatalogById('Seated_Cable_Rows')?.imageUrl2,
     ),
   );
   addIf(
@@ -38,6 +40,7 @@ List<WorkoutExercise> _fitnessTodayWorkout(AppState state) {
       'Cable Machine',
       'יד קדמית',
       imageUrl: exerciseCatalogById('High_Cable_Curls')?.imageUrl,
+      imageUrl2: exerciseCatalogById('High_Cable_Curls')?.imageUrl2,
     ),
   );
   addIf(
@@ -49,6 +52,7 @@ List<WorkoutExercise> _fitnessTodayWorkout(AppState state) {
       'משקולות יד',
       'יד קדמית',
       imageUrl: exerciseCatalogById('Dumbbell_Bicep_Curl')?.imageUrl,
+      imageUrl2: exerciseCatalogById('Dumbbell_Bicep_Curl')?.imageUrl2,
     ),
   );
 
@@ -61,6 +65,7 @@ List<WorkoutExercise> _fitnessTodayWorkout(AppState state) {
         'גומיות התנגדות',
         'גב',
         imageUrl: exerciseCatalogById('Band_Pull_Apart')?.imageUrl,
+        imageUrl2: exerciseCatalogById('Band_Pull_Apart')?.imageUrl2,
       ),
     );
   }
@@ -103,6 +108,7 @@ WorkoutExercise _fitnessAlternativeFor(
       'משקולות יד',
       'יד קדמית',
       imageUrl: exerciseCatalogById('Alternate_Hammer_Curl')?.imageUrl,
+      imageUrl2: exerciseCatalogById('Alternate_Hammer_Curl')?.imageUrl2,
     );
   }
   if (state.equipment['גומיות התנגדות'] == true) {

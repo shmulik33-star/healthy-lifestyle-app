@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -54,6 +56,9 @@ class _FitnessScreenState extends State<FitnessScreen> {
         final progress = workout.isEmpty ? 0.0 : completedCount / workout.length;
         final estimatedMinutes =
             workout.fold<int>(0, (sum, exercise) => sum + exercise.sets * 3);
+        final muscleGroupsLabel = workout.isEmpty
+            ? 'אין אימון'
+            : {for (final exercise in workout) exercise.muscleGroup}.join(' + ');
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -127,7 +132,7 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                 'האימון של היום',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              Text('גב + יד קדמית · כ־$estimatedMinutes דקות'),
+                              Text('$muscleGroupsLabel · כ־$estimatedMinutes דקות'),
                             ],
                           ),
                         ),
@@ -193,7 +198,10 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                   },
                           ),
                           if (exercise.imageUrl != null) ...[
-                            _ExerciseThumbnail(imageUrl: exercise.imageUrl!),
+                            _ExerciseThumbnail(
+                              imageUrl: exercise.imageUrl!,
+                              imageUrl2: exercise.imageUrl2,
+                            ),
                             const SizedBox(width: 10),
                           ],
                           Expanded(
@@ -345,38 +353,121 @@ class _FitnessScreenState extends State<FitnessScreen> {
   }
 }
 
-/// Small demo-image thumbnail next to an exercise (a static reference frame,
-/// not an animated GIF -- see ExerciseCatalogItem). Falls back to a plain
-/// icon while loading or if the image fails to load, so a slow/broken image
-/// host never blocks or breaks the exercise list itself.
-class _ExerciseThumbnail extends StatelessWidget {
-  const _ExerciseThumbnail({required this.imageUrl});
+/// Demo-image thumbnail next to an exercise. free-exercise-db (the source
+/// -- see ExerciseCatalogItem) only has two static reference frames per
+/// exercise (start/end position), not a real animated GIF, so this fakes
+/// the motion by alternating imageUrl/imageUrl2 on a timer -- a simple
+/// 2-frame loop reads much more like "what the movement looks like" than a
+/// single still frame. Tapping it opens a larger view for anyone who still
+/// can't tell what's going on at list-row size. Falls back to a plain icon
+/// while loading or if an image fails to load, so a slow/broken image host
+/// never blocks or breaks the exercise list itself.
+class _ExerciseThumbnail extends StatefulWidget {
+  const _ExerciseThumbnail({required this.imageUrl, this.imageUrl2});
   final String imageUrl;
+  final String? imageUrl2;
+
+  @override
+  State<_ExerciseThumbnail> createState() => _ExerciseThumbnailState();
+}
+
+class _ExerciseThumbnailState extends State<_ExerciseThumbnail> {
+  Timer? _timer;
+  bool _showSecondFrame = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.imageUrl2 != null) {
+      _timer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+        if (!mounted) return;
+        setState(() => _showSecondFrame = !_showSecondFrame);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        imageUrl,
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : _placeholder(),
-        errorBuilder: (context, error, stackTrace) => _placeholder(),
+    final currentUrl =
+        (_showSecondFrame && widget.imageUrl2 != null) ? widget.imageUrl2! : widget.imageUrl;
+    return GestureDetector(
+      onTap: () => _openLarge(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.network(
+          currentUrl,
+          width: 88,
+          height: 88,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : _placeholder(),
+          errorBuilder: (context, error, stackTrace) => _placeholder(),
+        ),
+      ),
+    );
+  }
+
+  void _openLarge(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  widget.imageUrl,
+                  width: 260,
+                  height: 260,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                    width: 260,
+                    height: 260,
+                    child: Icon(Icons.fitness_center, size: 48, color: Colors.grey),
+                  ),
+                ),
+              ),
+              if (widget.imageUrl2 != null) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    widget.imageUrl2!,
+                    width: 260,
+                    height: 260,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('סגור'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _placeholder() => Container(
-        width: 56,
-        height: 56,
+        width: 88,
+        height: 88,
         decoration: BoxDecoration(
           color: const Color(0xFFF5F6F7),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.fitness_center, size: 22, color: Colors.grey),
+        child: const Icon(Icons.fitness_center, size: 30, color: Colors.grey),
       );
 }
 

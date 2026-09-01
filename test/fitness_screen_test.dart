@@ -55,6 +55,15 @@ void main() {
       expect(find.text('פלאנק'), findsOneWidget);
       expect(find.text('שכיבות סמיכה'), findsOneWidget);
       expect(state.recentWorkoutMuscleGroups, containsAll(['ליבה', 'חזה']));
+      // The "today's workout" header must reflect the actual picked
+      // exercises' muscle groups, not a hardcoded label.
+      expect(find.textContaining('ליבה + חזה'), findsOneWidget);
+
+      // Each exercise card's _ExerciseThumbnail runs a Timer.periodic to
+      // alternate between its two demo-image frames -- unmount the tree so
+      // dispose() cancels those timers before the test ends, or flutter_test
+      // fails on a leaked pending Timer.
+      await tester.pumpWidget(const SizedBox());
     },
   );
 
@@ -88,6 +97,10 @@ void main() {
 
       expect(find.text(fallbackExerciseName), findsOneWidget);
       expect(find.text('מתכנן אימון...'), findsNothing);
+
+      // See the matching comment in the previous test: unmount to cancel
+      // each _ExerciseThumbnail's periodic frame-swap Timer.
+      await tester.pumpWidget(const SizedBox());
     },
   );
 }
