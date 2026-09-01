@@ -106,10 +106,9 @@ class HomeScreen extends StatelessWidget {
                 // "צעדים" is dropped here per the redesign brief; the
                 // underlying step data/screen are untouched.
                 SizedBox(
-                  height: 108,
+                  height: 128,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
                       children: [
                         const SizedBox(width: 24),
@@ -451,20 +450,21 @@ class _QuickActionTile extends StatelessWidget {
               ],
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: contentColor.withValues(alpha: darkContent ? .30 : .25),
                     ),
-                    child: Icon(icon, color: contentColor, size: 19),
+                    child: Icon(icon, color: contentColor, size: 17),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     value ?? label,
                     textAlign: TextAlign.center,
