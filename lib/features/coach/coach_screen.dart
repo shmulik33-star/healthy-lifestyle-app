@@ -96,6 +96,29 @@ class _CoachScreenState extends State<CoachScreen> {
   bool _listening = false;
   bool _speakRepliesAloud = true;
 
+  // Chrome only lets a page's *first-ever* speechSynthesis.speak() call
+  // actually produce sound if that call happens synchronously inside a
+  // real user gesture (a click/tap) -- our real replies are always spoken
+  // later, after the network round-trip to the coach, which is never
+  // synchronous with the tap that triggered it. Without this, that first
+  // real speak() call is silently dropped, and because it never succeeds,
+  // the page is never "unlocked" for speech either -- every later reply
+  // stays silent too, for the rest of the page's life. Firing one
+  // near-silent utterance here, synchronously, on every tap of something
+  // that could lead to a spoken reply (mic button, send button, a
+  // quick-question chip) reliably unlocks it the first time one of those
+  // taps actually happens -- there's no reliable way to tell from here
+  // whether a given call was the one that unlocked it, so this just stays
+  // cheap and harmless to repeat rather than trying to track that.
+  void _primeTts() {
+    if (!_ttsAvailable) return;
+    try {
+      _tts.speak(' ');
+    } catch (_) {
+      // Deliberately swallowed -- see _runSafely's comment for why.
+    }
+  }
+
   // "Voice conversation" mode (the ChatGPT-style back-and-forth the product
   // owner actually asked for): once turned on with the mic button, each
   // turn auto-chains into the next -- recognized speech is sent, the reply
@@ -249,6 +272,7 @@ class _CoachScreenState extends State<CoachScreen> {
   // ChatGPT-style back-and-forth -- talk, get a spoken reply, keep talking
   // -- not "press the mic before every single thing you say".
   Future<void> _toggleVoiceConversation(AppState state) async {
+    _primeTts();
     if (_voiceConversationActive) {
       // Flipped immediately (not inside setState) so the retry logic in
       // _onListenSessionEnded, which can run while the stop calls below are
@@ -354,11 +378,11 @@ class _CoachScreenState extends State<CoachScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ActionChip(label: const Text('אני רעב'), onPressed: () => _ask(state, 'אני רעב, מה כדאי לאכול?')),
-              ActionChip(label: const Text('מה עם האימון?'), onPressed: () => _ask(state, 'מה האימון שלי היום?')),
-              ActionChip(label: const Text('איך נראה השבוע?'), onPressed: () => _ask(state, 'ספר לי על התפריט והקניות לשבוע')),
-              ActionChip(label: const Text('מה היעד שלי?'), onPressed: () => _ask(state, 'מה היעד והמטרה שלי?')),
-              ActionChip(label: const Text('איך ההתקדמות?'), onPressed: () => _ask(state, 'איך ההתקדמות והמשקל שלי?')),
+              ActionChip(label: const Text('אני רעב'), onPressed: () => _askFromButton(state, 'אני רעב, מה כדאי לאכול?')),
+              ActionChip(label: const Text('מה עם האימון?'), onPressed: () => _askFromButton(state, 'מה האימון שלי היום?')),
+              ActionChip(label: const Text('איך נראה השבוע?'), onPressed: () => _askFromButton(state, 'ספר לי על התפריט והקניות לשבוע')),
+              ActionChip(label: const Text('מה היעד שלי?'), onPressed: () => _askFromButton(state, 'מה היעד והמטרה שלי?')),
+              ActionChip(label: const Text('איך ההתקדמות?'), onPressed: () => _askFromButton(state, 'איך ההתקדמות והמשקל שלי?')),
             ],
           ),
         ),
@@ -435,7 +459,7 @@ class _CoachScreenState extends State<CoachScreen> {
                       : () {
                           final q = input.text.trim();
                           if (q.isEmpty) return;
-                          _ask(state, q);
+                          _askFromButton(state, q);
                           input.clear();
                         },
                   icon: const Icon(Icons.send),
@@ -446,6 +470,17 @@ class _CoachScreenState extends State<CoachScreen> {
         ),
       ],
     );
+  }
+
+  // Entry point for every direct, synchronous button tap that can lead to
+  // a spoken reply (a quick-question chip, the send button) -- primes
+  // speech synthesis, synchronously, in the same gesture as the tap
+  // itself, before handing off to the actual (later, async) ask. The mic
+  // button primes on its own inside _toggleVoiceConversation instead,
+  // since its tap doesn't call _ask directly.
+  void _askFromButton(AppState state, String question) {
+    _primeTts();
+    _ask(state, question);
   }
 
   Future<void> _ask(AppState state, String question) async {
