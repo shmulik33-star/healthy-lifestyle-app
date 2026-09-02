@@ -183,6 +183,12 @@ class _CoachScreenState extends State<CoachScreen> {
         return;
       }
       await _tts.setLanguage(workingLocale);
+      // 1.5x normal speed, per feedback -- on web this maps directly to the
+      // Web Speech API's SpeechSynthesisUtterance.rate (1.0 = normal), not
+      // some other platform's normalized 0.0-1.0 range. Best-effort: a
+      // browser/voice that rejects the rate shouldn't break availability,
+      // it just falls back to that voice's own default rate.
+      await _runSafely(() => _tts.setSpeechRate(1.5));
       // Best-effort: prefer an explicit Hebrew voice over whatever
       // setLanguage's own matching picked, when the platform exposes voice
       // selection. Never lets a failure here (e.g. web builds that don't
