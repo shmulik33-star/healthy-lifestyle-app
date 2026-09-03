@@ -5,7 +5,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
+import 'barcode_scanner_screen.dart';
 import 'nutrition_label_ai_service.dart';
+import 'open_food_facts_service.dart';
 
 class AddFoodToCatalogScreen extends StatefulWidget {
   const AddFoodToCatalogScreen({
@@ -51,6 +53,9 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
   String _aiMessage = '';
   String _aiCode = '';
   double _aiConfidence = 0;
+
+  bool _scanningBarcode = false;
+  String _barcodeMessage = '';
 
   @override
   void initState() {
@@ -123,6 +128,76 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
     if (path.endsWith('.png')) return 'image/png';
     if (path.endsWith('.webp')) return 'image/webp';
     return 'image/jpeg';
+  }
+
+  // Runs entirely on this screen's own persistent State (no showDialog, no
+  // captured Navigator/context that needs to survive anything closing) --
+  // this screen is itself a full page pushed onto the Navigator, so it
+  // doesn't have the root-vs-branch Navigator pitfall the quick-add sheet's
+  // barcode flow had.
+  Future<void> _scanBarcode() async {
+    if (_scanningBarcode) return;
+    final barcode = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(builder: (_) => const BarcodeScannerScreen()),
+    );
+    if (barcode == null || barcode.isEmpty || !mounted) return;
+
+    // Local check first, no network -- same as the quick-add sheet's
+    // barcode flow. Unlike that flow (which is about logging a meal), this
+    // screen is for adding a *new* catalog item, so an existing match is
+    // just reported rather than jumping anywhere -- overwriting whatever
+    // the user may have already typed here would be surprising.
+    final existing = widget.state.foodByBarcode(barcode);
+    if (existing != null) {
+      setState(() {
+        _barcode = barcode;
+        _barcodeMessage = '"${existing.name}" כבר קיים במאגר עם הברקוד הזה.';
+      });
+      return;
+    }
+
+    setState(() {
+      _barcode = barcode;
+      _scanningBarcode = true;
+      _barcodeMessage = 'מחפש ב-Open Food Facts…';
+    });
+
+    try {
+      final product = await OpenFoodFactsService.lookup(barcode);
+      if (!mounted) return;
+
+      if (!product.found) {
+        setState(() {
+          _barcodeMessage = 'לא מצאנו את המוצר הזה במאגר Open Food Facts. אפשר למלא ידנית — בפעם הבאה נזהה אותו אוטומטית.';
+        });
+        return;
+      }
+
+      if (name.text.trim().isEmpty && product.name.isNotEmpty) {
+        name.text = product.name;
+      }
+      if (product.caloriesPer100g != null) {
+        calories.text = _formatNumber(product.caloriesPer100g!);
+      }
+      if (product.proteinPer100g != null) {
+        protein.text = _formatNumber(product.proteinPer100g!);
+      }
+      if (product.carbsPer100g != null) {
+        carbs.text = _formatNumber(product.carbsPer100g!);
+      }
+      if (product.fatPer100g != null) {
+        fat.text = _formatNumber(product.fatPer100g!);
+      }
+
+      setState(() {
+        _barcodeMessage = 'הערכים זוהו והועתקו לטופס. יש לבדוק אותם לפני השמירה.';
+      });
+    } on OpenFoodFactsException catch (error) {
+      if (!mounted) return;
+      setState(() => _barcodeMessage = error.message);
+    } finally {
+      if (mounted) setState(() => _scanningBarcode = false);
+    }
   }
 
   Future<void> _pickLabelPhoto(ImageSource source) async {
@@ -233,6 +308,48 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'סריקת ברקוד',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'סרוק ברקוד של מוצר ארוז — הערכים יזוהו אוטומטית מול מאגר '
+                    'Open Food Facts ויועתקו לטופס. אפשר לתקן הכול לפני השמירה.',
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton.tonalIcon(
+                    key: const Key('food_barcode_scan_button'),
+                    onPressed: _scanningBarcode ? null : _scanBarcode,
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('סרוק ברקוד'),
+                  ),
+                  if (_scanningBarcode || _barcodeMessage.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      key: const Key('food_barcode_status'),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: _scanningBarcode
+                          ? const LinearProgressIndicator()
+                          : Text(_barcodeMessage),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
