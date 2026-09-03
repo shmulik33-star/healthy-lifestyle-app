@@ -130,7 +130,19 @@ class MealEstimateAiService {
         );
       }
 
-      return NutritionLabelAiSuggestion.fromJson(decoded);
+      try {
+        return NutritionLabelAiSuggestion.fromJson(decoded);
+      } catch (_) {
+        // Same reasoning as NutritionLabelAiService.recognize: a malformed
+        // field must surface as our typed exception, not a raw TypeError --
+        // _runEstimateAndOpenLogSheet only catches MealEstimateAiException,
+        // so anything else propagates uncaught and leaves its loading
+        // dialog stuck on screen forever instead of showing an error.
+        throw const MealEstimateAiException(
+          'קיבלתי תשובה לא תקינה משירות ההערכה. אפשר לנסות שוב.',
+          code: 'invalid_response',
+        );
+      }
     } finally {
       if (ownedClient) httpClient.close();
     }
