@@ -148,6 +148,18 @@ class NutritionLabelAiService {
       );
     }
 
-    return NutritionLabelAiSuggestion.fromJson(decoded);
+    try {
+      return NutritionLabelAiSuggestion.fromJson(decoded);
+    } catch (_) {
+      // A malformed field (e.g. a value that's neither a number nor a
+      // numeric string) must still surface as our typed exception, not a
+      // raw TypeError -- callers only catch NutritionLabelAiException, so
+      // anything else propagates uncaught and can leave a loading dialog
+      // stuck on screen forever instead of showing an error.
+      throw const NutritionLabelAiException(
+        'קיבלתי תשובה לא תקינה משירות הפענוח. אפשר לנסות שוב.',
+        code: 'invalid_response',
+      );
+    }
   }
 }

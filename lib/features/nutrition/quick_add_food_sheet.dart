@@ -129,6 +129,14 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // showDialog defaults to the ROOT navigator, but `navigator` here is
+        // whichever (branch) Navigator go_router's StatefulShellRoute gave
+        // this tab -- without this, the dialog opens on a different
+        // Navigator than the one `navigator.pop()` below actually closes,
+        // so it never visibly goes away (this is exactly what broke after
+        // the go_router migration: same code, but root and nearest
+        // Navigator used to always be the same single Navigator).
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
@@ -237,6 +245,10 @@ class QuickAddFoodSheet extends StatelessWidget {
 
     final description = await showDialog<String>(
       context: navigator.context,
+      // Keep every dialog in this flow on the same (branch) Navigator as
+      // `navigator` -- see the comment on the loading dialog in
+      // _lookUpAndOpenForm for why this matters.
+      useRootNavigator: false,
       builder: (_) => const _DescribeMealDialog(),
     );
     if (description == null || description.trim().isEmpty || !navigator.mounted) {
@@ -263,6 +275,10 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // See the comment on the loading dialog in _lookUpAndOpenForm --
+        // same fix, same reason: this must land on the same (branch)
+        // Navigator that `navigator.pop()` below actually closes.
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
