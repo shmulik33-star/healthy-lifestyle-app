@@ -30,8 +30,9 @@ class NutritionLabelAiSuggestion {
 
   factory NutritionLabelAiSuggestion.fromJson(Map<String, dynamic> json) {
     double number(String key, double max) {
-      final value = (json[key] as num?)?.toDouble() ??
-          double.tryParse(json[key]?.toString() ?? '') ??
+      final raw = json[key];
+      final value = (raw is num ? raw.toDouble() : null) ??
+          double.tryParse(raw?.toString() ?? '') ??
           0;
       if (!value.isFinite) return 0;
       return value.clamp(0, max).toDouble();
@@ -148,6 +149,13 @@ class NutritionLabelAiService {
       );
     }
 
-    return NutritionLabelAiSuggestion.fromJson(decoded);
+    try {
+      return NutritionLabelAiSuggestion.fromJson(decoded);
+    } catch (_) {
+      throw const NutritionLabelAiException(
+        'קיבלתי תשובה לא תקינה משירות הפענוח. אפשר לנסות שוב.',
+        code: 'invalid_response',
+      );
+    }
   }
 }

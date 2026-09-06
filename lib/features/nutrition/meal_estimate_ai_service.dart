@@ -130,7 +130,14 @@ class MealEstimateAiService {
         );
       }
 
-      return NutritionLabelAiSuggestion.fromJson(decoded);
+      try {
+        return NutritionLabelAiSuggestion.fromJson(decoded);
+      } catch (_) {
+        throw const MealEstimateAiException(
+          'קיבלתי תשובה לא תקינה משירות ההערכה. אפשר לנסות שוב.',
+          code: 'invalid_response',
+        );
+      }
     } finally {
       if (ownedClient) httpClient.close();
     }

@@ -342,11 +342,19 @@ class DailySnapshot {
 
 class AppState extends ChangeNotifier {
   AppState(){ if (weeklyPlan.isEmpty) generateWeeklyPlan(save:false); }
-  String firstName = 'שמוליק';
-  int age = 50;
-  double heightCm = 175;
-  double currentWeight = 105;
-  double targetWeight = 90;
+  // Empty, not a placeholder name -- this used to default to the original
+  // developer's own name ('שמוליק'), which meant every brand-new install or
+  // freshly-signed-up account greeted the person with someone else's name
+  // until they happened to visit the profile screen and changed it.
+  String firstName = '';
+  // Zero, not a plausible-looking placeholder body -- same reasoning as
+  // firstName above: these used to default to specific numbers (age 50,
+  // 175cm, 105kg -> 90kg) that looked like a real person's data to anyone
+  // who hadn't filled in their own profile yet.
+  int age = 0;
+  double heightCm = 0;
+  double currentWeight = 0;
+  double targetWeight = 0;
   int calorieTarget = 1900;
   int proteinTarget = 120;
   int carbTarget = 150;
@@ -496,7 +504,9 @@ class AppState extends ChangeNotifier {
     }
 
     if(!loaded){
-      state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
+      if (state.currentWeight > 0) {
+        state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
+      }
       state.dailyStateKey=state.dayKeyAt(DateTime.now());
       state.generateWeeklyPlan(save:false);
     } else if (state.dailyStateKey.isEmpty) {
@@ -517,6 +527,38 @@ class AppState extends ChangeNotifier {
       await AppLocalStorage.writeString(_backupStorageKey,previous);
     }
     await AppLocalStorage.writeString(_storageKey,encoded);
+  }
+
+  /// Wipes every local field back to a brand-new device's defaults --
+  /// name, profile, goals, meals, pantry, shopping list, weight history,
+  /// custom foods, everything. Used only when the user explicitly creates a
+  /// *new* account (see CloudSyncScreen._signUp): without this, whatever
+  /// local/offline data already sat on this device (this app is local-first
+  /// by design -- CLAUDE.md golden rule #2) would get swept into the brand
+  /// new account's cloud snapshot on the first sync, so a fresh signup would
+  /// show a stranger's name and history instead of a clean slate. Signing
+  /// IN to an *existing* account must never call this -- that path relies on
+  /// exactly the opposite behavior (merging this device's local copy with
+  /// the account's cloud data).
+  ///
+  /// Reuses _toJson()/_readJson() against a throwaway default AppState so
+  /// this can't drift out of sync with the real field list: `fresh._toJson()`
+  /// has no null values, so none of _readJson's `?? current value` fallbacks
+  /// can keep old data around.
+  Future<void> resetForNewAccount() async {
+    final fresh = AppState();
+    _readJson(fresh._toJson());
+    weights.clear();
+    // Only seed a first weight-history point once there's an actual weight
+    // to record -- currentWeight is 0 (unset) right after this reset, and a
+    // 0kg entry would just be a fake data point on the weight graph.
+    if (currentWeight > 0) {
+      weights.add(WeightEntry(DateTime.now(), currentWeight));
+    }
+    dailyStateKey = dayKeyAt(DateTime.now());
+    generateWeeklyPlan(save: false);
+    notifyListeners();
+    await _save();
   }
 
   Map<String,dynamic> _toJson()=>{

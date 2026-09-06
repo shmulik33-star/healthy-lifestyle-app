@@ -139,6 +139,12 @@ class OpenFoodFactsService {
       );
     }
 
-    return OpenFoodFactsProduct.fromJson(decoded);
+    try {
+      return OpenFoodFactsProduct.fromJson(decoded);
+    } catch (_) {
+      throw const OpenFoodFactsException(
+        'קיבלנו תשובה לא תקינה מ-Open Food Facts.',
+      );
+    }
   }
 }

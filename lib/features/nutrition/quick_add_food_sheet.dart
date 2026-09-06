@@ -129,6 +129,14 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // The app uses go_router's StatefulShellRoute (a separate nested
+        // Navigator per tab) -- `navigator` here is that nested tab
+        // Navigator, not the app's root one. showDialog defaults to
+        // useRootNavigator: true, which would push this dialog onto a
+        // *different* Navigator than the one `navigator.pop()` below
+        // operates on: the dialog would never close (stuck forever on top
+        // of whatever opens next), even though the lookup itself succeeded.
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
@@ -154,10 +162,16 @@ class QuickAddFoodSheet extends StatelessWidget {
       product = await OpenFoodFactsService.lookup(barcode);
     } on OpenFoodFactsException catch (error) {
       errorMessage = error.message;
+    } catch (_) {
+      // Anything unexpected (not just OpenFoodFactsException) still has to
+      // close the loading dialog below -- otherwise the user is stuck on
+      // "בודק מול Open Food Facts…" forever with no way out.
+      errorMessage = 'קרתה תקלה בבדיקה מול Open Food Facts.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
     }
 
     if (!navigator.mounted) return;
-    navigator.pop(); // close the loading dialog
 
     // Prefill only -- AddFoodToCatalogScreen never saves on its own (same
     // rule as the nutrition-label AI flow), and kosher status is
@@ -263,6 +277,13 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // Same reasoning as the Open Food Facts loading dialog above:
+        // `navigator` is the go_router tab's nested Navigator, and
+        // showDialog's default useRootNavigator: true would otherwise push
+        // this onto a different Navigator than the one `navigator.pop()`
+        // closes -- leaving it stuck on screen forever even after the AI
+        // estimate comes back and the log sheet opens underneath it.
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
@@ -288,10 +309,16 @@ class QuickAddFoodSheet extends StatelessWidget {
       suggestion = await run();
     } on MealEstimateAiException catch (error) {
       errorMessage = error.message;
+    } catch (_) {
+      // Anything unexpected still has to close the loading dialog below --
+      // otherwise the user is stuck on "מעריך את הארוחה…" forever with no
+      // way out, even though the AI already returned data.
+      errorMessage = 'קרתה תקלה בהערכת הארוחה.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
     }
 
     if (!navigator.mounted) return;
-    navigator.pop(); // close the loading dialog
 
     if (suggestion == null || !suggestion.recognized) {
       ScaffoldMessenger.of(navigator.context).showSnackBar(
