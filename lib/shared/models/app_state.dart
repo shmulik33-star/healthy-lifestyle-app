@@ -347,10 +347,14 @@ class AppState extends ChangeNotifier {
   // freshly-signed-up account greeted the person with someone else's name
   // until they happened to visit the profile screen and changed it.
   String firstName = '';
-  int age = 50;
-  double heightCm = 175;
-  double currentWeight = 105;
-  double targetWeight = 90;
+  // Zero, not a plausible-looking placeholder body -- same reasoning as
+  // firstName above: these used to default to specific numbers (age 50,
+  // 175cm, 105kg -> 90kg) that looked like a real person's data to anyone
+  // who hadn't filled in their own profile yet.
+  int age = 0;
+  double heightCm = 0;
+  double currentWeight = 0;
+  double targetWeight = 0;
   int calorieTarget = 1900;
   int proteinTarget = 120;
   int carbTarget = 150;
@@ -500,7 +504,9 @@ class AppState extends ChangeNotifier {
     }
 
     if(!loaded){
-      state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
+      if (state.currentWeight > 0) {
+        state.weights.add(WeightEntry(DateTime.now(), state.currentWeight));
+      }
       state.dailyStateKey=state.dayKeyAt(DateTime.now());
       state.generateWeeklyPlan(save:false);
     } else if (state.dailyStateKey.isEmpty) {
@@ -542,7 +548,13 @@ class AppState extends ChangeNotifier {
   Future<void> resetForNewAccount() async {
     final fresh = AppState();
     _readJson(fresh._toJson());
-    weights..clear()..add(WeightEntry(DateTime.now(), currentWeight));
+    weights.clear();
+    // Only seed a first weight-history point once there's an actual weight
+    // to record -- currentWeight is 0 (unset) right after this reset, and a
+    // 0kg entry would just be a fake data point on the weight graph.
+    if (currentWeight > 0) {
+      weights.add(WeightEntry(DateTime.now(), currentWeight));
+    }
     dailyStateKey = dayKeyAt(DateTime.now());
     generateWeeklyPlan(save: false);
     notifyListeners();
