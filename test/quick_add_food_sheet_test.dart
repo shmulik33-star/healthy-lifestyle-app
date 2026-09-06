@@ -45,6 +45,15 @@ void main() {
     expect(find.textContaining('Open Food Facts'), findsOneWidget);
     expect(find.byIcon(Icons.qr_code_scanner), findsOneWidget);
 
+    // Nutrition-label scan (packaged food, via AI) -- also present but not
+    // tapped, same reasoning as the barcode option: no real camera/AI
+    // network in CI's headless widget-test runner.
+    expect(find.text('סרוק תווית תזונה'), findsOneWidget);
+    expect(
+      find.byKey(const Key('quick_add_nutrition_label_option')),
+      findsOneWidget,
+    );
+
     // The two AI meal-estimate options (home-cooked/unpackaged food) --
     // also present but not tapped, same reasoning as the barcode option:
     // no real camera/AI network in CI's headless widget-test runner.

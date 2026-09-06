@@ -26,8 +26,8 @@ Future<String?> _pushBarcodeScanner(NavigatorState navigator) =>
     );
 
 /// Unified "quick add" entry point with two kinds of shortcuts:
-/// - Packaged food (barcode scan, via Open Food Facts) -- goes to the
-///   catalog form to review before it's saved.
+/// - Packaged food (barcode scan via Open Food Facts, or a nutrition-label
+///   photo via AI) -- both go to the catalog form to review before saving.
 /// - Home-cooked / unpackaged meals (a plate photo or a free-text
 ///   description, both via AI estimate) -- these skip the catalog form
 ///   entirely and go straight to logging "אכלתי" (see
@@ -74,6 +74,14 @@ class QuickAddFoodSheet extends StatelessWidget {
               title: 'סרוק ברקוד',
               subtitle: 'זיהוי אוטומטי של המוצר לפי מאגר Open Food Facts',
               onTap: () => _scanBarcode(context, state),
+            ),
+            const SizedBox(height: 8),
+            _QuickAddOptionTile(
+              key: const Key('quick_add_nutrition_label_option'),
+              icon: Icons.document_scanner_outlined,
+              title: 'סרוק תווית תזונה',
+              subtitle: 'זיהוי AI של טבלת הערכים התזונתיים ישר למאגר',
+              onTap: () => _scanNutritionLabel(context, state),
             ),
             const SizedBox(height: 8),
             _QuickAddOptionTile(
@@ -203,6 +211,107 @@ class QuickAddFoodSheet extends StatelessWidget {
         ),
       );
     }
+
+    await navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => AppStateScope(
+          state: state,
+          child: AddFoodToCatalogScreen(state: state, prefill: prefill),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _scanNutritionLabel(BuildContext context, AppState state) async {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+
+    XFile? file;
+    try {
+      file = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1600,
+        imageQuality: 82,
+      );
+    } catch (_) {
+      file = null;
+    }
+    if (file == null || !navigator.mounted) return;
+
+    final bytes = await file.readAsBytes();
+    if (!navigator.mounted) return;
+    final mimeType = _mimeTypeFor(file);
+
+    unawaited(
+      showDialog<void>(
+        context: navigator.context,
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Text('קורא את התווית…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    NutritionLabelAiSuggestion? suggestion;
+    String? errorMessage;
+    try {
+      suggestion = await NutritionLabelAiService.recognize(
+        imageBytes: bytes,
+        mimeType: mimeType,
+      );
+    } on NutritionLabelAiException catch (error) {
+      errorMessage = error.message;
+    } catch (_) {
+      errorMessage = 'קרתה תקלה בקריאת התווית.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
+    }
+
+    if (!navigator.mounted) return;
+
+    if (suggestion == null || !suggestion.recognized) {
+      ScaffoldMessenger.of(navigator.context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMessage ??
+                (suggestion != null && suggestion.reason.isNotEmpty
+                    ? suggestion.reason
+                    : 'לא זוהתה טבלת ערכים תזונתיים ברורה. אפשר לצלם מקרוב יותר או להזין ידנית.'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // A scanned label describes a fixed product, same as a barcode scan --
+    // it goes to the catalog form for review, never straight to "אכלתי"
+    // like the plate-photo/free-text estimates above (those are one-off
+    // home meals, not a catalog item).
+    final prefill = FoodItem(
+      id: '',
+      name: suggestion.name,
+      category: 'אחר',
+      type: KosherFoodType.pareve,
+      kosherStatus: KosherStatus.unknown,
+      caloriesPer100g: suggestion.caloriesPer100g,
+      proteinPer100g: suggestion.proteinPer100g,
+      carbsPer100g: suggestion.carbsPer100g,
+      fatPer100g: suggestion.fatPer100g,
+      units: const {'מנה': 100},
+    );
 
     await navigator.push(
       MaterialPageRoute<void>(
