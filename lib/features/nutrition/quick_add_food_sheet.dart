@@ -129,6 +129,14 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // The app uses go_router's StatefulShellRoute (a separate nested
+        // Navigator per tab) -- `navigator` here is that nested tab
+        // Navigator, not the app's root one. showDialog defaults to
+        // useRootNavigator: true, which would push this dialog onto a
+        // *different* Navigator than the one `navigator.pop()` below
+        // operates on: the dialog would never close (stuck forever on top
+        // of whatever opens next), even though the lookup itself succeeded.
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
@@ -269,6 +277,13 @@ class QuickAddFoodSheet extends StatelessWidget {
     unawaited(
       showDialog<void>(
         context: navigator.context,
+        // Same reasoning as the Open Food Facts loading dialog above:
+        // `navigator` is the go_router tab's nested Navigator, and
+        // showDialog's default useRootNavigator: true would otherwise push
+        // this onto a different Navigator than the one `navigator.pop()`
+        // closes -- leaving it stuck on screen forever even after the AI
+        // estimate comes back and the log sheet opens underneath it.
+        useRootNavigator: false,
         barrierDismissible: false,
         builder: (_) => const Center(
           child: Card(
