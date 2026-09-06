@@ -133,16 +133,25 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             ),
           );
           if (confirmed != true) return;
+
+          // Reset BEFORE calling signUp(), not after: CloudSyncService's
+          // automatic-sync auth listener fires the instant Supabase creates
+          // a session (immediately, if this project doesn't require email
+          // confirmation) and uploads whatever is in `state` right then. If
+          // the reset happened after signUp(), that listener could upload
+          // the old local data to the brand-new account a moment before our
+          // own reset ran -- and then sync would just merge it straight
+          // back down. Resetting first means there's nothing old left for
+          // that race to catch.
+          await widget.state.resetForNewAccount();
+          await ProfileGoalsStore.save([widget.state.primaryGoal]);
+          if (!mounted) return;
         }
 
         final response = await CloudSyncService.signUp(
           email: _email.text.trim(),
           password: _password.text,
         );
-        if (!mounted) return;
-
-        await widget.state.resetForNewAccount();
-        await ProfileGoalsStore.save([widget.state.primaryGoal]);
         if (!mounted) return;
 
         if (response.session == null) {
