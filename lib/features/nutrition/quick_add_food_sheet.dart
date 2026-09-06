@@ -154,10 +154,16 @@ class QuickAddFoodSheet extends StatelessWidget {
       product = await OpenFoodFactsService.lookup(barcode);
     } on OpenFoodFactsException catch (error) {
       errorMessage = error.message;
+    } catch (_) {
+      // Anything unexpected (not just OpenFoodFactsException) still has to
+      // close the loading dialog below -- otherwise the user is stuck on
+      // "בודק מול Open Food Facts…" forever with no way out.
+      errorMessage = 'קרתה תקלה בבדיקה מול Open Food Facts.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
     }
 
     if (!navigator.mounted) return;
-    navigator.pop(); // close the loading dialog
 
     // Prefill only -- AddFoodToCatalogScreen never saves on its own (same
     // rule as the nutrition-label AI flow), and kosher status is
