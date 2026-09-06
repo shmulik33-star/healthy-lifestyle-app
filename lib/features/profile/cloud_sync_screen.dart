@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/models/app_state.dart';
 import 'cloud_sync_service.dart';
+import 'profile_goals_store.dart';
 
 class CloudSyncScreen extends StatefulWidget {
   const CloudSyncScreen({super.key, required this.state});
@@ -98,11 +99,52 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
 
   Future<void> _signUp() => _runBusy(() async {
         if (!_validateCredentials()) return;
+        // This device may already carry local/offline data (this app is
+        // local-first by design) -- from the account owner's own earlier
+        // use, or from someone else who used this device before. Without an
+        // explicit confirmation, that data would silently ride along into
+        // the brand-new account's first sync -- a stranger's name, weight
+        // history and meals showing up for someone who just signed up.
+        final hasLocalData = widget.state.firstName.isNotEmpty ||
+            widget.state.customFoods.isNotEmpty ||
+            widget.state.meals.isNotEmpty ||
+            widget.state.pantryItems.isNotEmpty ||
+            widget.state.weights.length > 1;
+        if (hasLocalData) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('לאפס את הנתונים במכשיר הזה?'),
+              content: const Text(
+                'יש כבר נתונים מקומיים במכשיר הזה (שם, ארוחות, מזווה, משקל וכו׳). '
+                'כדי שהחשבון החדש יתחיל נקי, הנתונים המקומיים יאופסו לפני היצירה. '
+                'אם רצית להתחבר לחשבון קיים במקום זה, בטל ולחץ "התחבר".',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('ביטול'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('אפס והמשך'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+        }
+
         final response = await CloudSyncService.signUp(
           email: _email.text.trim(),
           password: _password.text,
         );
         if (!mounted) return;
+
+        await widget.state.resetForNewAccount();
+        await ProfileGoalsStore.save([widget.state.primaryGoal]);
+        if (!mounted) return;
+
         if (response.session == null) {
           _setMessage(
             'נשלח אליך מייל לאימות החשבון. אשר את האימייל, חזור למסך הזה ולחץ „התחבר”.',

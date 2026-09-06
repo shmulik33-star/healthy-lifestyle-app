@@ -50,7 +50,9 @@ class HomeScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'היי, ${state.firstName}',
+                            state.firstName.isEmpty
+                                ? 'היי!'
+                                : 'היי, ${state.firstName}',
                             style: const TextStyle(
                               fontFamily: 'Rubik',
                               fontWeight: FontWeight.w900,
