@@ -294,10 +294,16 @@ class QuickAddFoodSheet extends StatelessWidget {
       suggestion = await run();
     } on MealEstimateAiException catch (error) {
       errorMessage = error.message;
+    } catch (_) {
+      // Anything unexpected still has to close the loading dialog below --
+      // otherwise the user is stuck on "מעריך את הארוחה…" forever with no
+      // way out, even though the AI already returned data.
+      errorMessage = 'קרתה תקלה בהערכת הארוחה.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
     }
 
     if (!navigator.mounted) return;
-    navigator.pop(); // close the loading dialog
 
     if (suggestion == null || !suggestion.recognized) {
       ScaffoldMessenger.of(navigator.context).showSnackBar(
