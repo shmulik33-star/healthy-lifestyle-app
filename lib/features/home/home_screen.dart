@@ -336,7 +336,12 @@ class HomeScreen extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          // Without this, a Column sized to its content (mainAxisSize.min)
+          // inside a fixed-height modal sheet just clips silently past the
+          // screen edge on a short phone -- no error, no scrollbar, the
+          // later suggestions are simply gone. Reported after "בא לי
+          // לנשנש" only ever showed one suggestion on a real device.
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Container(
             padding: const EdgeInsets.all(20),
