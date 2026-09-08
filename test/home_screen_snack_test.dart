@@ -72,6 +72,30 @@ void main() {
   );
 
   testWidgets(
+    'double-tapping a snack suggestion logs it only once -- addFood has no '
+    'Undo, so a fast double-tap or a slow frame before the sheet pops must '
+    'not double-log',
+    (tester) async {
+      _useTallTestSurface(tester);
+      final state = AppState();
+      await tester.pumpWidget(wrap(state));
+
+      final mealsBefore = state.meals.length;
+      final suggestion = state.smartSnackSuggestions.first;
+      final tileFinder = find.byKey(Key('snack_option_${suggestion.id}'));
+
+      await tester.tap(find.text('בא לי לנשנש'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(tileFinder, warnIfMissed: false);
+      await tester.tap(tileFinder, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(state.meals.length, mealsBefore + 1);
+    },
+  );
+
+  testWidgets(
     'an empty suggestion list shows a friendly message instead of a fake item',
     (tester) async {
       _useTallTestSurface(tester);
