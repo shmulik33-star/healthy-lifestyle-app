@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -5,7 +6,21 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
+import 'barcode_scanner_screen.dart';
 import 'nutrition_label_ai_service.dart';
+import 'open_food_facts_service.dart';
+
+/// How the barcode-scan option gets a barcode back -- same pattern as
+/// QuickAddFoodSheet's own BarcodeScan typedef (not imported from there to
+/// avoid a circular import: quick_add_food_sheet.dart imports this file).
+/// The real implementation pushes [BarcodeScannerScreen] (a live camera);
+/// tests substitute a function that hands back a barcode directly.
+typedef BarcodeScan = Future<String?> Function(NavigatorState navigator);
+
+Future<String?> _pushBarcodeScanner(NavigatorState navigator) =>
+    navigator.push<String>(
+      MaterialPageRoute<String>(builder: (_) => const BarcodeScannerScreen()),
+    );
 
 class AddFoodToCatalogScreen extends StatefulWidget {
   const AddFoodToCatalogScreen({
@@ -13,6 +28,7 @@ class AddFoodToCatalogScreen extends StatefulWidget {
     required this.state,
     this.editingFood,
     this.prefill,
+    this.scanBarcode = _pushBarcodeScanner,
   });
   final AppState state;
   // When set, the screen edits this existing custom food in place (same id
@@ -27,6 +43,7 @@ class AddFoodToCatalogScreen extends StatefulWidget {
   // choice (golden rule #4), so it's left at the form's own manual
   // default regardless of what a prefill draft carries.
   final FoodItem? prefill;
+  final BarcodeScan scanBarcode;
 
   @override
   State<AddFoodToCatalogScreen> createState() => _AddFoodToCatalogScreenState();
@@ -80,15 +97,109 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
 
     final prefill = widget.prefill;
     if (prefill == null) return;
-    // Only name/macros/barcode are copied -- category and kosher fields
-    // deliberately stay at the form's own manual defaults (see the
-    // `prefill` field doc above).
-    if (prefill.name.isNotEmpty) name.text = prefill.name;
-    if (prefill.caloriesPer100g > 0) calories.text = _formatNumber(prefill.caloriesPer100g);
-    if (prefill.proteinPer100g > 0) protein.text = _formatNumber(prefill.proteinPer100g);
-    if (prefill.carbsPer100g > 0) carbs.text = _formatNumber(prefill.carbsPer100g);
-    if (prefill.fatPer100g > 0) fat.text = _formatNumber(prefill.fatPer100g);
-    _barcode = prefill.barcode;
+    _applyPrefill(prefill);
+  }
+
+  // Only name/macros/barcode are copied -- category and kosher fields
+  // deliberately stay at the form's own manual defaults (see the `prefill`
+  // field doc above). Shared by initState (widget.prefill) and the in-screen
+  // barcode scan below, so both fill the form the same way.
+  void _applyPrefill(FoodItem source) {
+    if (source.name.isNotEmpty) name.text = source.name;
+    if (source.caloriesPer100g > 0) calories.text = _formatNumber(source.caloriesPer100g);
+    if (source.proteinPer100g > 0) protein.text = _formatNumber(source.proteinPer100g);
+    if (source.carbsPer100g > 0) carbs.text = _formatNumber(source.carbsPer100g);
+    if (source.fatPer100g > 0) fat.text = _formatNumber(source.fatPer100g);
+    _barcode = source.barcode;
+  }
+
+  Future<void> _scanBarcodeForCatalog() async {
+    final navigator = Navigator.of(context);
+    final barcode = await widget.scanBarcode(navigator);
+    if (barcode == null || barcode.isEmpty || !navigator.mounted || !mounted) {
+      return;
+    }
+
+    // Local check first, no network: a barcode already in the catalog/custom
+    // foods means there's nothing to fill in -- don't overwrite whatever the
+    // user already typed.
+    final existing = widget.state.foodByBarcode(barcode);
+    if (existing != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('כבר קיים במאגר בשם ${existing.name}.')),
+      );
+      return;
+    }
+
+    unawaited(
+      showDialog<void>(
+        context: navigator.context,
+        // This screen can be reached through go_router's per-tab nested
+        // Navigator, so useRootNavigator must be false -- otherwise the
+        // dialog opens on a different Navigator than the one that closes
+        // it and never actually goes away (see CLAUDE.md golden rule #14).
+        useRootNavigator: false,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 16),
+                  Text('בודק מול Open Food Facts…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    OpenFoodFactsProduct? product;
+    String? errorMessage;
+    try {
+      product = await OpenFoodFactsService.lookup(barcode);
+    } on OpenFoodFactsException catch (error) {
+      errorMessage = error.message;
+    } catch (_) {
+      errorMessage = 'קרתה תקלה בבדיקה מול Open Food Facts.';
+    } finally {
+      if (navigator.mounted) navigator.pop(); // close the loading dialog
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _applyPrefill(
+        FoodItem(
+          id: '',
+          name: product?.name ?? '',
+          category: category,
+          type: kosherType,
+          caloriesPer100g: product?.caloriesPer100g ?? 0,
+          proteinPer100g: product?.proteinPer100g ?? 0,
+          carbsPer100g: product?.carbsPer100g ?? 0,
+          fatPer100g: product?.fatPer100g ?? 0,
+          units: const {'גרם': 1},
+          barcode: barcode,
+        ),
+      );
+    });
+
+    if (product?.found != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorMessage != null
+                ? '$errorMessage אפשר למלא ידנית.'
+                : 'לא מצאנו את המוצר הזה במאגר Open Food Facts. אפשר למלא ידנית.',
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -233,6 +344,15 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.editingFood == null) ...[
+            OutlinedButton.icon(
+              key: const Key('add_food_scan_barcode'),
+              onPressed: _scanBarcodeForCatalog,
+              icon: const Icon(Icons.qr_code_scanner_outlined),
+              label: const Text('סרוק ברקוד'),
+            ),
+            const SizedBox(height: 12),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
@@ -356,6 +476,7 @@ class _AddFoodToCatalogScreenState extends State<AddFoodToCatalogScreen> {
           const Text('פרטי המזון', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           TextField(
+            key: const Key('add_food_name_field'),
             controller: name,
             decoration: const InputDecoration(
               labelText: 'שם המזון',
