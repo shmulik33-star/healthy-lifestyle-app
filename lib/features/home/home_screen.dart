@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../shared/models/app_state.dart';
+import '../../shared/models/food.dart';
 import '../kosher/kosher_card.dart';
 import '../nutrition/add_food_to_catalog_screen.dart';
 import '../nutrition/add_meal_sheet.dart';
@@ -324,17 +325,134 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _snack(BuildContext context, AppState state) {
-    showDialog<void>(
+    final suggestions = state.smartSnackSuggestions;
+    showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('מה אפשר לנשנש?'),
-        content: Text(state.smartSnackSuggestions.join('\n\n')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('סגור'),
+      // The app uses go_router's StatefulShellRoute (a separate nested
+      // Navigator per tab) -- see CLAUDE.md golden rule #14. This sheet is
+      // opened from the home tab's own context, so it must stay on that
+      // tab's Navigator rather than the default root one.
+      useRootNavigator: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          // Without this, a Column sized to its content (mainAxisSize.min)
+          // inside a fixed-height modal sheet just clips silently past the
+          // screen edge on a short phone -- no error, no scrollbar, the
+          // later suggestions are simply gone. Reported after "בא לי
+          // לנשנש" only ever showed one suggestion on a real device.
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: .05), blurRadius: 16, offset: const Offset(0, 6)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.cookie_outlined, color: AppTheme.warmMuted, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'מה אפשר לנשנש?',
+                      style: TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.ink),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (suggestions.isEmpty)
+                  const Text(
+                    'לא מצאתי כרגע נשנוש מתאים.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF5A4E3E), fontWeight: FontWeight.w600, height: 1.5),
+                  )
+                else
+                  for (final food in suggestions) ...[
+                    _SnackOptionTile(
+                      key: Key('snack_option_${food.id}'),
+                      food: food,
+                      onTap: () => _addSnack(context, sheetContext, state, food),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+              ],
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  // Same "no Undo" pattern as _addWater above: addFood doesn't hand back a
+  // MealEntry to undo against, so a snack tap is a one-way quick-log, same
+  // as adding a cup of water.
+  void _addSnack(
+    BuildContext context,
+    BuildContext sheetContext,
+    AppState state,
+    FoodItem food,
+  ) {
+    final unit = food.units.keys.first;
+    state.addFood(food, 1, unit, fromHome: true);
+    Navigator.pop(sheetContext);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('נוסף מהיר: ${food.name} · ${food.caloriesFor(unit, 1)} קל׳'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+}
+
+class _SnackOptionTile extends StatelessWidget {
+  const _SnackOptionTile({super.key, required this.food, required this.onTap});
+
+  final FoodItem food;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final unit = food.units.keys.first;
+    final calories = food.caloriesFor(unit, 1);
+    final protein = food.proteinFor(unit, 1);
+    return Material(
+      color: AppTheme.softMint,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      food.name,
+                      style: const TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$calories קל׳ · ${protein.toStringAsFixed(protein == protein.roundToDouble() ? 0 : 1)} גרם חלבון',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.add_circle_outline, color: AppTheme.mint, size: 22),
+            ],
+          ),
+        ),
       ),
     );
   }

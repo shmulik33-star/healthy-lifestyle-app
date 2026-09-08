@@ -743,14 +743,12 @@ List<FoodItem> _rankFoodsByTiers(AppState state, List<FoodItem> foods) {
 /// Falls back to the full smart-suggestions ranking only if the allowed
 /// catalog has no snack-category items at all (e.g. a very trimmed custom
 /// catalog), so the button never comes back empty.
-List<String> _nutritionSmartSnackSuggestions(AppState state) {
+List<FoodItem> _nutritionSmartSnackSuggestions(AppState state) {
   final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
-  if (allowed.isEmpty) {
-    return ['לא מצאתי כרגע מזון מתאים לכל ההגדרות'];
-  }
+  if (allowed.isEmpty) return const [];
   final snacks = allowed.where((food) => food.category == 'חטיפים וממתקים').toList();
   if (snacks.isEmpty) {
-    return _rankFoodsByTiers(state, allowed).take(3).map((food) => food.name).toList();
+    return _rankFoodsByTiers(state, allowed).take(3).toList();
   }
-  return _rankFoodsByTiers(state, snacks).take(3).map((food) => food.name).toList();
+  return _rankFoodsByTiers(state, snacks).take(3).toList();
 }

@@ -111,4 +111,26 @@ void main() {
     );
     expect(calories,2630);
   });
+
+  test('suggestedWaterCups scales with weight and adds a cup for high activity', () {
+    expect(
+      ProfileGoalsStore.suggestedWaterCups(weightKg:70,activityLevel:'נמוכה'),
+      9,
+    );
+    expect(
+      ProfileGoalsStore.suggestedWaterCups(weightKg:70,activityLevel:'גבוהה'),
+      10,
+    );
+  });
+
+  test('suggestedWaterCups clamps to the 6-16 range at extreme weights', () {
+    expect(
+      ProfileGoalsStore.suggestedWaterCups(weightKg:20,activityLevel:'נמוכה'),
+      6,
+    );
+    expect(
+      ProfileGoalsStore.suggestedWaterCups(weightKg:200,activityLevel:'גבוהה'),
+      16,
+    );
+  });
 }

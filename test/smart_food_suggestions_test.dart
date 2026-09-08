@@ -163,7 +163,7 @@ void main() {
       state.addCustomFood(snack);
 
       expect(state.smartFoodSuggestions.first, mainMeal.name);
-      expect(state.smartSnackSuggestions, [snack.name]);
+      expect(state.smartSnackSuggestions.map((f) => f.name), [snack.name]);
     },
   );
 
@@ -173,17 +173,20 @@ void main() {
     () {
       final state = AppState();
 
-      expect(state.smartSnackSuggestions, state.smartFoodSuggestions);
+      expect(
+        state.smartSnackSuggestions.map((f) => f.name).toList(),
+        state.smartFoodSuggestions,
+      );
     },
   );
 
   test(
-    'smartSnackSuggestions falls back to the existing message when the allowed '
-    'catalog is empty',
+    'smartSnackSuggestions returns an empty list (not a fake placeholder '
+    'item) when the allowed catalog is empty',
     () {
       final state = _EmptyCatalogAppState();
 
-      expect(state.smartSnackSuggestions, ['לא מצאתי כרגע מזון מתאים לכל ההגדרות']);
+      expect(state.smartSnackSuggestions, isEmpty);
     },
   );
 }

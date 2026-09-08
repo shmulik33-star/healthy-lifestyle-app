@@ -147,4 +147,14 @@ class ProfileGoalsStore {
             : 1.5;
     return (weightKg * factor).round().clamp(60, 250);
   }
+
+  static int suggestedWaterCups({
+    required double weightKg,
+    required String activityLevel,
+  }) {
+    final liters = weightKg * 0.033;
+    var cups = (liters * 1000 / 250).round();
+    if (activityLevel == 'גבוהה') cups += 1;
+    return cups.clamp(6, 16);
+  }
 }
