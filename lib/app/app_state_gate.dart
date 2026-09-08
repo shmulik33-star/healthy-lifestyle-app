@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/equipment/equipment_item.dart';
+import '../features/profile/auth_gate_screen.dart';
 import '../features/profile/cloud_sync_service.dart';
 import '../features/profile/daily_progress_sync_service.dart';
 import '../shared/models/app_state.dart';
@@ -28,6 +30,12 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
   AppState? state;
   Timer? _dayBoundaryTimer;
   Timer? _waterReminderTimer;
+  StreamSubscription<AuthState>? _authSubscription;
+  // supabase_flutter restores a persisted session synchronously during
+  // Supabase.initialize() (see main.dart), so this is already correct for a
+  // returning, previously-authenticated device the moment this widget
+  // builds -- no extra "remember me" plumbing needed for that case.
+  bool _signedIn = CloudSyncService.isSignedIn;
   // Tracks the last waterReminderMinutes we scheduled a Timer for, so the
   // AppState.notifyListeners() that fires on every unrelated state change
   // (a meal logged, a cup of water added, ...) doesn't reset/restart this
@@ -39,6 +47,13 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((authState) {
+      final signedIn = authState.session != null;
+      if (mounted && signedIn != _signedIn) {
+        setState(() => _signedIn = signedIn);
+      }
+    });
     AppState.load().then((loaded) async {
       if (!mounted) return;
       loaded.ensureCurrentDay();
@@ -108,6 +123,7 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
   void dispose() {
     _dayBoundaryTimer?.cancel();
     _waterReminderTimer?.cancel();
+    _authSubscription?.cancel();
     state?.removeListener(_onStateChangedForWaterReminder);
     CloudSyncService.stopAutomaticSync();
     DailyProgressSyncService.stopAutomaticSync();
@@ -121,6 +137,16 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
     if (currentState == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    // Gate on auth, not on local data readiness: AppState is always loaded
+    // first (this app stays local-first per CLAUDE.md golden rule #2) so
+    // sign-in/sign-up itself, and the reset-before-signUp flow it runs, has
+    // a real AppState to work with. Only the *screen shown* is gated.
+    if (!_signedIn) {
+      return AppStateScope(
+        state: currentState,
+        child: AuthGateScreen(state: currentState),
       );
     }
     return AppStateScope(state: currentState, child: widget.child);

@@ -90,6 +90,17 @@ production deploy (main). Repo: `shmulik33-star/healthy-lifestyle-app`.
 15. **ברירות מחדל של `AppState` לעולם לא ייראו כמו נתוני אמת** — שם/גיל/גובה/משקל
     חדשים מתחילים ריקים/0, לא ערך שרירותי שנראה כמו פרופיל אמיתי (ראה PR #51:
     `firstName='שמוליק'` היה ברירת מחדל שרדה מבדיקות, לא onboarding מכוון).
+16. **כניסה לאפליקציה דורשת התחברות/הרשמה** (PR #55): `AppStateGate`
+    (`lib/app/app_state_gate.dart`) שומר `_signedIn` ומחליף את כל עץ ה-routes
+    ב-`AuthGateScreen` (`lib/features/profile/auth_gate_screen.dart`) כל עוד אין
+    session פעיל. `supabase_flutter` שומר session ל-local storage ומשחזר אותו
+    **סינכרונית** בתוך `Supabase.initialize()` (main.dart) — כלומר "השאר מחובר"
+    לא דורש שום קוד נוסף, זה כבר ברירת המחדל של החבילה; רק חיבור ראשון לחשבון
+    דורש רשת. ה-gate מאזין ל-`onAuthStateChange` (בנוסף למאזין הפנימי הקיים כבר
+    ב-`CloudSyncService`) כדי להחליף מסך ברגע שההתחברות/הרשמה מצליחה. **AppState
+    עדיין נטען תמיד ראשון, ללא תלות באימות** (עקרון local-first, כלל #2) — ה-gate
+    חוסם רק איזה מסך מוצג, לא את טעינת הנתונים המקומיים; זרימת האיפוס-לפני-signUp
+    (כלל #15/PR #51) עדיין חלה במלואה ב-`AuthGateScreen`.
 
 ## גישות שכבר נכשלו — אל תחזור עליהן
 
