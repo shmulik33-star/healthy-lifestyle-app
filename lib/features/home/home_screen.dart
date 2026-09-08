@@ -370,6 +370,7 @@ class HomeScreen extends StatelessWidget {
                 else
                   for (final food in suggestions) ...[
                     _SnackOptionTile(
+                      key: Key('snack_option_${food.id}'),
                       food: food,
                       onTap: () => _addSnack(context, sheetContext, state, food),
                     ),
@@ -407,7 +408,7 @@ class HomeScreen extends StatelessWidget {
 }
 
 class _SnackOptionTile extends StatelessWidget {
-  const _SnackOptionTile({required this.food, required this.onTap});
+  const _SnackOptionTile({super.key, required this.food, required this.onTap});
 
   final FoodItem food;
   final VoidCallback onTap;

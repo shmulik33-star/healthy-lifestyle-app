@@ -45,13 +45,18 @@ void main() {
 
       final mealsBefore = state.meals.length;
       final suggestion = state.smartSnackSuggestions.first;
+      // The suggested snack can also appear in the "ההמלצה שלי עכשיו" chips
+      // higher up on the same (still-visible-underneath) home screen, so
+      // matching by its own tile key -- not by its name text, which isn't
+      // guaranteed unique on screen -- is what actually identifies it here.
+      final tileFinder = find.byKey(Key('snack_option_${suggestion.id}'));
 
       await tester.tap(find.text('בא לי לנשנש'));
       await tester.pumpAndSettle();
       expect(find.text('מה אפשר לנשנש?'), findsOneWidget);
-      expect(find.text(suggestion.name), findsOneWidget);
+      expect(tileFinder, findsOneWidget);
 
-      await tester.tap(find.text(suggestion.name));
+      await tester.tap(tileFinder);
       await tester.pumpAndSettle();
 
       expect(find.text('מה אפשר לנשנש?'), findsNothing);
