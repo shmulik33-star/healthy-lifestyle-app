@@ -736,19 +736,22 @@ List<FoodItem> _rankFoodsByTiers(AppState state, List<FoodItem> foods) {
   return ranked;
 }
 
-/// Same tiered ranking as [_nutritionSmartFoodSuggestions], but restricted
-/// to the "חטיפים וממתקים" catalog category first, so "בא לי לנשנש" offers
-/// actual treats/snacks instead of the top-ranked food overall (which is
+/// Same tiered ranking as [_nutritionSmartFoodSuggestions], but prefers
+/// actual "חטיפים וממתקים" catalog items first, so "בא לי לנשנש" leads with
+/// real treats/snacks instead of the top-ranked food overall (which is
 /// usually a protein-dense main-meal item, not something you'd snack on).
-/// Falls back to the full smart-suggestions ranking only if the allowed
-/// catalog has no snack-category items at all (e.g. a very trimmed custom
-/// catalog), so the button never comes back empty.
+/// Tops up with the general ranking whenever there are fewer than 3 real
+/// snacks -- a user with only one custom snack logged should still see 3
+/// suggestions, not a suspiciously short list.
 List<FoodItem> _nutritionSmartSnackSuggestions(AppState state) {
   final allowed = state.allFoods.where(state.foodAllowedForRecommendations).toList();
   if (allowed.isEmpty) return const [];
   final snacks = allowed.where((food) => food.category == 'חטיפים וממתקים').toList();
-  if (snacks.isEmpty) {
-    return _rankFoodsByTiers(state, allowed).take(3).toList();
-  }
-  return _rankFoodsByTiers(state, snacks).take(3).toList();
+  final rankedSnacks = _rankFoodsByTiers(state, snacks);
+  if (rankedSnacks.length >= 3) return rankedSnacks.take(3).toList();
+
+  final usedIds = rankedSnacks.map((food) => food.id).toSet();
+  final topUp = _rankFoodsByTiers(state, allowed)
+      .where((food) => !usedIds.contains(food.id));
+  return [...rankedSnacks, ...topUp].take(3).toList();
 }
