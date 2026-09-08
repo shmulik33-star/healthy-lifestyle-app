@@ -326,6 +326,10 @@ class HomeScreen extends StatelessWidget {
 
   void _snack(BuildContext context, AppState state) {
     final suggestions = state.smartSnackSuggestions;
+    // Guards against a double-tap (or a slow frame before the sheet pops)
+    // logging the same snack twice -- addFood has no Undo, so this closure
+    // flag makes the first tap win and ignores any tap after it.
+    var handled = false;
     showModalBottomSheet<void>(
       context: context,
       // The app uses go_router's StatefulShellRoute (a separate nested
@@ -377,7 +381,11 @@ class HomeScreen extends StatelessWidget {
                     _SnackOptionTile(
                       key: Key('snack_option_${food.id}'),
                       food: food,
-                      onTap: () => _addSnack(context, sheetContext, state, food),
+                      onTap: () {
+                        if (handled) return;
+                        handled = true;
+                        _addSnack(context, sheetContext, state, food);
+                      },
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -439,6 +447,8 @@ class _SnackOptionTile extends StatelessWidget {
                   children: [
                     Text(
                       food.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.ink),
                     ),
                     const SizedBox(height: 2),
