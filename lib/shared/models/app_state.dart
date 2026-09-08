@@ -761,6 +761,7 @@ class AppState extends ChangeNotifier {
     required int calories,required int protein,String? goal,String? activity,
     int? workoutDays,String? style,bool? keepKosher,bool? separateMeatDairy,
     int? waitMinutes,int? dailyStartMinutes,int? waterReminderMinutes,
+    int? waterTarget,
   }) => _profileUpdate(
     this,
     name:name,
@@ -777,6 +778,7 @@ class AppState extends ChangeNotifier {
     waitMinutes:waitMinutes,
     dailyStartMinutes:dailyStartMinutes,
     waterReminderMinutes:waterReminderMinutes,
+    waterTarget:waterTarget,
   );
 
   bool get shouldRemindToDrink => _profileShouldRemindToDrink(this);
@@ -995,7 +997,7 @@ class AppState extends ChangeNotifier {
   WorkoutExercise alternativeFor(WorkoutExercise current) =>
       _fitnessAlternativeFor(this, current);
   List<String> get smartFoodSuggestions => _nutritionSmartFoodSuggestions(this);
-  List<String> get smartSnackSuggestions => _nutritionSmartSnackSuggestions(this);
+  List<FoodItem> get smartSnackSuggestions => _nutritionSmartSnackSuggestions(this);
   String get kosherStateText => _kosherStateText(this);
 
   Map<String, dynamic> coachAiContext() => _coachAiContext(this);

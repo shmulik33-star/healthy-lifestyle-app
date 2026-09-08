@@ -20,12 +20,14 @@ void _profileUpdate(
   int? waitMinutes,
   int? dailyStartMinutes,
   int? waterReminderMinutes,
+  int? waterTarget,
 }) {
   state.firstName = name;
   state.currentWeight = weight;
   state.targetWeight = target;
   state.calorieTarget = calories;
   state.proteinTarget = protein;
+  if (waterTarget != null) state.waterTarget = waterTarget;
   if (goal != null) state.primaryGoal = goal;
   if (activity != null) state.activityLevel = activity;
   if (workoutDays != null) state.workoutDaysPerWeek = workoutDays;

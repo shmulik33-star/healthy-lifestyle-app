@@ -10,7 +10,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  TextEditingController? name,weight,target,calories,protein,customWait,customWaterReminder;
+  TextEditingController? name,weight,target,calories,protein,waterTarget,customWait,customWaterReminder;
   List<String> goals=[];
   String? primaryGoal,activity,style;
   int? workoutDays;
@@ -32,6 +32,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     target=TextEditingController(text:s.targetWeight.toStringAsFixed(1));
     calories=TextEditingController(text:'${s.calorieTarget}');
     protein=TextEditingController(text:'${s.proteinTarget}');
+    waterTarget=TextEditingController(text:'${s.waterTarget}');
     customWait=TextEditingController(text:'${s.meatWaitMinutes}');
     customWaterReminder=TextEditingController(text:'${s.waterReminderMinutes}');
     goals=[s.primaryGoal];
@@ -80,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose(){
-    for(final c in [name,weight,target,calories,protein,customWait,customWaterReminder]){c?.dispose();}
+    for(final c in [name,weight,target,calories,protein,waterTarget,customWait,customWaterReminder]){c?.dispose();}
     super.dispose();
   }
 
@@ -200,6 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(width:10),
             Expanded(child:_f(protein!,'יעד חלבון (גרם)',number:true)),
           ]),
+          _f(waterTarget!,'יעד כוסות מים ליום',number:true),
           OutlinedButton.icon(
             onPressed:(){
               final profileWeight=double.tryParse(weight!.text.replaceAll(',','.'))??s.currentWeight;
@@ -212,6 +214,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               protein!.text='${ProfileGoalsStore.suggestedProtein(
                 weightKg:profileWeight,
                 goals:goals,
+              )}';
+              waterTarget!.text='${ProfileGoalsStore.suggestedWaterCups(
+                weightKg:profileWeight,
+                activityLevel:activity??s.activityLevel,
               )}';
               setState((){});
             },
@@ -327,6 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 target:double.tryParse(target!.text.replaceAll(',','.'))??s.targetWeight,
                 calories:int.tryParse(calories!.text)??s.calorieTarget,
                 protein:int.tryParse(protein!.text)??s.proteinTarget,
+                waterTarget:int.tryParse(waterTarget!.text)??s.waterTarget,
                 goal:finalPrimary,activity:activity,workoutDays:workoutDays,style:style,
                 keepKosher:keepKosher,
                 separateMeatDairy:keepKosher&&separateMeatDairy,
