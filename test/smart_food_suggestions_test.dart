@@ -135,8 +135,8 @@ void main() {
   );
 
   test(
-    'smartSnackSuggestions only offers foods from the snacks/sweets category, '
-    'not the top-ranked food overall',
+    'smartSnackSuggestions leads with real snacks/sweets-category foods '
+    'ahead of the top-ranked food overall',
     () {
       final state = AppState();
       // Isolate the pool with the same "eat the whole catalog" trick used
@@ -163,7 +163,34 @@ void main() {
       state.addCustomFood(snack);
 
       expect(state.smartFoodSuggestions.first, mainMeal.name);
-      expect(state.smartSnackSuggestions.map((f) => f.name), [snack.name]);
+      expect(state.smartSnackSuggestions.first.name, snack.name);
+    },
+  );
+
+  test(
+    'smartSnackSuggestions tops up with the general ranking when there are '
+    'fewer than 3 real snacks, instead of returning a suspiciously short list',
+    () {
+      final state = AppState();
+      _eatEntireCatalog(state);
+      final snack = FoodItem(
+        id: 'test_only_snack',
+        name: 'חטיף יחיד',
+        category: 'חטיפים וממתקים',
+        type: KosherFoodType.pareve,
+        caloriesPer100g: 100,
+        proteinPer100g: 1,
+        carbsPer100g: 0,
+        fatPer100g: 0,
+        units: {'גרם': 1},
+      );
+      state.addCustomFood(snack);
+
+      final suggestions = state.smartSnackSuggestions;
+      expect(suggestions, hasLength(3));
+      expect(suggestions.first.name, snack.name);
+      // No duplicates between the one real snack and the topped-up items.
+      expect(suggestions.map((f) => f.id).toSet(), hasLength(3));
     },
   );
 
