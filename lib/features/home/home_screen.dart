@@ -63,7 +63,7 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          const Text(
+                          Text(
                             'כל צעד קטן מצטרף לתמונה הגדולה',
                             style: TextStyle(fontSize: 14, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
                           ),
@@ -191,7 +191,7 @@ class HomeScreen extends StatelessWidget {
                             const SizedBox(height: 4),
                             Text(
                               'מתוך ${state.calorieTarget} קלוריות',
-                              style: const TextStyle(fontSize: 13, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
+                              style: TextStyle(fontSize: 13, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 10),
                             Container(
@@ -208,7 +208,7 @@ class HomeScreen extends StatelessWidget {
                                     style: const TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.lavender),
                                   ),
                                   const SizedBox(width: 6),
-                                  const Text('גרם חלבון', style: TextStyle(fontSize: 11, color: AppTheme.warmMuted, fontWeight: FontWeight.w600)),
+                                  Text('גרם חלבון', style: TextStyle(fontSize: 11, color: AppTheme.warmMuted, fontWeight: FontWeight.w600)),
                                 ],
                               ),
                             ),
@@ -294,8 +294,8 @@ class HomeScreen extends StatelessWidget {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => _snack(context, state),
-                    icon: const Icon(Icons.cookie_outlined, color: AppTheme.warmMuted),
-                    label: const Text('בא לי לנשנש', style: TextStyle(color: AppTheme.warmMuted, fontWeight: FontWeight.w700)),
+                    icon: Icon(Icons.cookie_outlined, color: AppTheme.warmMuted),
+                    label: Text('בא לי לנשנש', style: TextStyle(color: AppTheme.warmMuted, fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
@@ -362,7 +362,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.cookie_outlined, color: AppTheme.warmMuted, size: 20),
+                    Icon(Icons.cookie_outlined, color: AppTheme.warmMuted, size: 20),
                     const SizedBox(width: 8),
                     const Text(
                       'מה אפשר לנשנש?',
@@ -454,7 +454,7 @@ class _SnackOptionTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '$calories קל׳ · ${protein.toStringAsFixed(protein == protein.roundToDouble() ? 0 : 1)} גרם חלבון',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 12, color: AppTheme.warmMuted, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
