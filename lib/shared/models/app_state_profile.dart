@@ -139,6 +139,7 @@ extension AppStateCloudSyncBridge on AppState {
         },
         'weights': weights.map((entry) => entry.toJson()).toList(),
         'meals': meals.map((entry) => entry.toJson()).toList(),
+        'workoutSetLogs': workoutSetLogs.map((entry) => entry.toJson()).toList(),
         'pantryItems': pantryItems.map((item) => item.toJson()).toList(),
         'customEquipment':
             customEquipment.map((item) => item.toJson()).toList(),
@@ -286,6 +287,15 @@ extension AppStateCloudSyncBridge on AppState {
         ..clear()
         ..addAll(mealsRaw.whereType<Map>().map(
               (item) => MealEntry.fromJson(Map<String, dynamic>.from(item)),
+            ));
+    }
+
+    final workoutSetLogsRaw = data['workoutSetLogs'];
+    if (workoutSetLogsRaw is List) {
+      workoutSetLogs
+        ..clear()
+        ..addAll(workoutSetLogsRaw.whereType<Map>().map(
+              (item) => SetLog.fromJson(Map<String, dynamic>.from(item)),
             ));
     }
 

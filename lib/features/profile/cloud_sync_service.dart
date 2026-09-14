@@ -466,6 +466,14 @@ class CloudSyncService {
       preferLocal: false,
       deletedKeys: deletedMeals.keys.toSet(),
     );
+    // Append-only set-logging history (see AppState.workoutSetLogs) -- never
+    // deleted by the user, so a plain union by id (no tombstones) is enough.
+    merged['workoutSetLogs'] = _mergeListByKey(
+      remote['workoutSetLogs'],
+      local['workoutSetLogs'],
+      _idKey,
+      preferLocal: false,
+    );
     merged['pantryItems'] = _mergeListByKey(
       remote['pantryItems'],
       local['pantryItems'],
@@ -547,6 +555,12 @@ class CloudSyncService {
       _mealKey,
       preferLocal: true,
       deletedKeys: deletedMeals.keys.toSet(),
+    );
+    merged['workoutSetLogs'] = _mergeListByKey(
+      remote['workoutSetLogs'],
+      local['workoutSetLogs'],
+      _idKey,
+      preferLocal: true,
     );
     merged['pantryItems'] = _mergeListByKey(
       remote['pantryItems'],
