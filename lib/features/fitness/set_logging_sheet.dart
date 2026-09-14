@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../../shared/models/app_state.dart';
 
-/// Default rest duration between sets (see spec section 0/6 -- 90s,
-/// pending final user sign-off, called out explicitly in the PR
-/// description per the open questions in section 6).
-const kDefaultRestSeconds = 90;
+/// Default rest duration between sets (spec section 0/6 originally proposed
+/// 90s; lowered to 60s per user sign-off in the PR discussion). Tapping a
+/// running timer still stacks a full extra round for anyone who wants more.
+const kDefaultRestSeconds = 60;
 
 /// Set-logging bottom sheet for one exercise: a weight+reps row per set
 /// (pre-filled from `AppState.lastSetFor`/the plan's default reps), a
