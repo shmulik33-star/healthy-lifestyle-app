@@ -30,7 +30,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/audio/workout_motivation.wav
+    - assets/audio/workout_background_music.mp3
+    - assets/audio/rest_countdown_5to1.mp3
   fonts:
     - family: Rubik
       fonts:

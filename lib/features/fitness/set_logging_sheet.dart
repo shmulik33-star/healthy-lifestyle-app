@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../shared/models/app_state.dart';
 
@@ -32,12 +31,16 @@ class _SetLoggingSheetState extends State<SetLoggingSheet> {
   late final List<TextEditingController> _weightControllers;
   late final List<TextEditingController> _repsControllers;
   final Set<int> _completedIndices = {};
+  // Two independent channels (per spec section 0): channel 1 is the
+  // background motivational loop, playing throughout the workout; channel 2
+  // is a short spoken "5, 4, 3, 2, 1" clip fired once when the last-5-second
+  // window starts, instead of a per-second flutter_tts call.
   final AudioPlayer _music = AudioPlayer();
-  final FlutterTts _tts = FlutterTts();
+  final AudioPlayer _countdown = AudioPlayer();
 
   Timer? _restTicker;
   int _restSecondsRemaining = 0;
-  int _lastSpokenSecond = -1;
+  bool _countdownPlayed = false;
   bool _musicStarted = false;
 
   @override
@@ -65,7 +68,8 @@ class _SetLoggingSheetState extends State<SetLoggingSheet> {
     _restTicker?.cancel();
     _music.stop();
     _music.dispose();
-    _tts.stop();
+    _countdown.stop();
+    _countdown.dispose();
     for (final c in _weightControllers) {
       c.dispose();
     }
@@ -86,7 +90,7 @@ class _SetLoggingSheetState extends State<SetLoggingSheet> {
     // playback -- see spec section 5.
     try {
       await _music.setReleaseMode(ReleaseMode.loop);
-      await _music.play(AssetSource('audio/workout_motivation.wav'), volume: 0.35);
+      await _music.play(AssetSource('audio/workout_background_music.mp3'), volume: 0.35);
     } catch (_) {
       // Audio is a motivational extra, not core functionality -- a device
       // without audio output or an unsupported format must never block
@@ -113,7 +117,7 @@ class _SetLoggingSheetState extends State<SetLoggingSheet> {
     _restTicker?.cancel();
     setState(() {
       _restSecondsRemaining = seconds;
-      _lastSpokenSecond = -1;
+      _countdownPlayed = seconds > 5 ? false : _countdownPlayed;
     });
     _restTicker = Timer.periodic(const Duration(seconds: 1), (_) => _tickRest());
   }
@@ -126,9 +130,21 @@ class _SetLoggingSheetState extends State<SetLoggingSheet> {
       setState(() => _restSecondsRemaining = 0);
       return;
     }
-    if (_restSecondsRemaining <= 5 && _restSecondsRemaining != _lastSpokenSecond) {
-      _lastSpokenSecond = _restSecondsRemaining;
-      _tts.speak(_restSecondsRemaining.toString());
+    // The countdown clip itself narrates "5, 4, 3, 2, 1" (channel 2), so it
+    // plays once at the start of the last-5-second window rather than once
+    // per second.
+    if (_restSecondsRemaining == 5 && !_countdownPlayed) {
+      _countdownPlayed = true;
+      _playCountdownClip();
+    }
+  }
+
+  Future<void> _playCountdownClip() async {
+    try {
+      await _countdown.stop();
+      await _countdown.play(AssetSource('audio/rest_countdown_5to1.mp3'), volume: 0.9);
+    } catch (_) {
+      // Same "never block the timer" rule as the background music above.
     }
   }
 
