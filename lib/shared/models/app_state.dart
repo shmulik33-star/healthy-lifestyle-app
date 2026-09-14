@@ -312,6 +312,82 @@ class WorkoutExercise {
   final String? imageUrl2;
 }
 
+/// One logged set (weight+reps) for an exercise, kept permanently so the
+/// UI can show "last time" defaults and (later) progressive-overload/PR
+/// tracking -- not scoped to "today's workout" the way _completedExercises
+/// in FitnessScreen is. Keyed by exercise *name* (nameHe), not a catalog
+/// id: WorkoutExercise (what both the rule-based planner in
+/// app_state_fitness.dart and the AI-picked path in FitnessScreen actually
+/// produce) never carries ExerciseCatalogItem.id through, so name is the
+/// only identifier stable across both workout sources.
+class SetLog {
+  const SetLog({
+    required this.id,
+    required this.dayKey,
+    required this.exerciseName,
+    required this.setIndex,
+    required this.weightKg,
+    required this.reps,
+    required this.completed,
+    required this.isWarmup,
+    required this.completedAt,
+  });
+
+  final String id;
+  final String dayKey;
+  final String exerciseName;
+  final int setIndex;
+  final double weightKg;
+  final int reps;
+  final bool completed;
+  final bool isWarmup;
+  final DateTime completedAt;
+
+  SetLog copyWith({
+    double? weightKg,
+    int? reps,
+    bool? completed,
+    bool? isWarmup,
+    DateTime? completedAt,
+  }) =>
+      SetLog(
+        id: id,
+        dayKey: dayKey,
+        exerciseName: exerciseName,
+        setIndex: setIndex,
+        weightKg: weightKg ?? this.weightKg,
+        reps: reps ?? this.reps,
+        completed: completed ?? this.completed,
+        isWarmup: isWarmup ?? this.isWarmup,
+        completedAt: completedAt ?? this.completedAt,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'dayKey': dayKey,
+        'exerciseName': exerciseName,
+        'setIndex': setIndex,
+        'weightKg': weightKg,
+        'reps': reps,
+        'completed': completed,
+        'isWarmup': isWarmup,
+        'completedAt': completedAt.toIso8601String(),
+      };
+
+  factory SetLog.fromJson(Map<String, dynamic> j) => SetLog(
+        id: j['id']?.toString() ?? '',
+        dayKey: j['dayKey']?.toString() ?? '',
+        exerciseName: j['exerciseName']?.toString() ?? '',
+        setIndex: (j['setIndex'] as num?)?.toInt() ?? 0,
+        weightKg: (j['weightKg'] as num?)?.toDouble() ?? 0,
+        reps: (j['reps'] as num?)?.toInt() ?? 0,
+        completed: j['completed'] == true,
+        isWarmup: j['isWarmup'] == true,
+        completedAt: DateTime.tryParse(j['completedAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+      );
+}
+
 class DailySnapshot {
   const DailySnapshot({
     required this.dayKey,
@@ -407,6 +483,11 @@ class AppState extends ChangeNotifier {
   // same muscle group two days running. Local-only, like recentMealKeys:
   // not part of exportCloudSyncState, it's a rotation aid, not user data.
   final List<String> recentWorkoutMuscleGroups = [];
+  // Permanent set-logging history (weight+reps per set), synced like other
+  // append-mostly logs (meals/weights) -- see SetLog above. Never deleted by
+  // the user in this MVP, so unlike pantry/shopping it doesn't need a
+  // deletion-tombstone map.
+  final List<SetLog> workoutSetLogs = [];
   final Map<String,bool> shoppingChecked = {};
   final List<ShoppingItem> shoppingItems = [];
   bool shoppingInitialized = false;
@@ -574,7 +655,9 @@ class AppState extends ChangeNotifier {
     'primaryGoal':primaryGoal,'activityLevel':activityLevel,'workoutDaysPerWeek':workoutDaysPerWeek,'eatingStyle':eatingStyle,
     'meals':meals.map((e)=>e.toJson()).toList(),'weights':weights.map((e)=>e.toJson()).toList(),'equipment':equipment,
     'weeklyPlan':weeklyPlan.map((e)=>e.toJson()).toList(),'recentMealKeys':recentMealKeys,
-    'recentWorkoutMuscleGroups':recentWorkoutMuscleGroups,'shoppingChecked':shoppingChecked,
+    'recentWorkoutMuscleGroups':recentWorkoutMuscleGroups,
+    'workoutSetLogs':workoutSetLogs.map((e)=>e.toJson()).toList(),
+    'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
     'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
@@ -613,6 +696,7 @@ class AppState extends ChangeNotifier {
     weeklyPlan..clear()..addAll(((j['weeklyPlan'] as List?)??[]).map((e)=>PlannedDay.fromJson(Map<String,dynamic>.from(e))));
     recentMealKeys..clear()..addAll(((j['recentMealKeys'] as List?)??[]).map((e)=>e.toString()));
     recentWorkoutMuscleGroups..clear()..addAll(((j['recentWorkoutMuscleGroups'] as List?)??[]).map((e)=>e.toString()));
+    workoutSetLogs..clear()..addAll(((j['workoutSetLogs'] as List?)??[]).map((e)=>SetLog.fromJson(Map<String,dynamic>.from(e))));
     shoppingChecked.clear();
     if (j['shoppingChecked'] is Map) { for (final e in Map<String,dynamic>.from(j['shoppingChecked']).entries) { shoppingChecked[e.key]=e.value==true; } }
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
@@ -1005,6 +1089,72 @@ class AppState extends ChangeNotifier {
   void recordWorkoutMuscleGroups(List<String> groups) {
     _fitnessRecordMuscleGroups(this, groups);
     notifyListeners();
+  }
+
+  /// Most recent completed (non-warmup) set logged for this exercise name,
+  /// across any day -- used to prefill "last time" weight/reps defaults.
+  SetLog? lastSetFor(String exerciseName) {
+    SetLog? latest;
+    for (final log in workoutSetLogs) {
+      if (log.exerciseName != exerciseName || !log.completed || log.isWarmup) {
+        continue;
+      }
+      if (latest == null || log.completedAt.isAfter(latest.completedAt)) {
+        latest = log;
+      }
+    }
+    return latest;
+  }
+
+  /// Logs or updates one set for [exerciseName] on the current logical day
+  /// (see dayKeyAt/rule #3 -- never raw DateTime.day). Replaces any existing
+  /// entry with the same exerciseName+setIndex+dayKey so re-finishing a set
+  /// (e.g. after editing weight/reps) overwrites rather than duplicates.
+  void logSet({
+    required String exerciseName,
+    required int setIndex,
+    required double weightKg,
+    required int reps,
+    bool isWarmup = false,
+  }) {
+    // save:false -- this method's own _save() below (after the set is
+    // added) already covers persisting the day-key change, and firing both
+    // as separate fire-and-forget saves risks the earlier (staler) one
+    // finishing last and clobbering the newer write.
+    ensureCurrentDay(save: false);
+    final dayKey = dailyStateKey;
+    final now = DateTime.now();
+    workoutSetLogs.removeWhere((log) =>
+        log.dayKey == dayKey &&
+        log.exerciseName == exerciseName &&
+        log.setIndex == setIndex);
+    workoutSetLogs.add(SetLog(
+      id: '${dayKey}_${exerciseName}_${setIndex}_${now.microsecondsSinceEpoch}',
+      dayKey: dayKey,
+      exerciseName: exerciseName,
+      setIndex: setIndex,
+      weightKg: weightKg,
+      reps: reps,
+      completed: true,
+      isWarmup: isWarmup,
+      completedAt: now,
+    ));
+    notifyListeners();
+    _save();
+  }
+
+  /// Completed sets for [exerciseName] logged today, keyed by setIndex --
+  /// what the "2/3 סטים" progress on an exercise row and the set-logging
+  /// sheet's pre-filled rows are built from.
+  Map<int, SetLog> todaysSetsFor(String exerciseName) {
+    final dayKey = dailyStateKey.isEmpty ? dayKeyAt(DateTime.now()) : dailyStateKey;
+    final result = <int, SetLog>{};
+    for (final log in workoutSetLogs) {
+      if (log.dayKey == dayKey && log.exerciseName == exerciseName && log.completed) {
+        result[log.setIndex] = log;
+      }
+    }
+    return result;
   }
 
   String coachResponse(String question){

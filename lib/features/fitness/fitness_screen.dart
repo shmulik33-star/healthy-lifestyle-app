@@ -7,6 +7,7 @@ import '../../shared/models/app_state.dart';
 import '../equipment/equipment_screen.dart';
 import '../equipment/equipment_workout.dart';
 import 'fitness_ai_service.dart';
+import 'set_logging_sheet.dart';
 
 /// How FitnessScreen asks the AI fitness planner for today's exercise ids.
 /// The real implementation is FitnessAiService.pickWorkout; tests substitute
@@ -175,10 +176,14 @@ class _FitnessScreenState extends State<FitnessScreen> {
                 final index = entry.key;
                 final exercise = entry.value;
                 final done = state.workoutCompleted || _completedExercises.contains(index);
+                final loggedSets = state.todaysSetsFor(exercise.name).length;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Card(
-                    child: Padding(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => _openSetLogging(context, state, exercise),
+                      child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,7 +224,9 @@ class _FitnessScreenState extends State<FitnessScreen> {
                                   children: [
                                     _InfoChip(
                                       icon: Icons.repeat,
-                                      text: '${exercise.sets} סטים × ${exercise.reps} חזרות',
+                                      text: loggedSets > 0
+                                          ? '$loggedSets/${exercise.sets} סטים × ${exercise.reps} חזרות'
+                                          : '${exercise.sets} סטים × ${exercise.reps} חזרות',
                                     ),
                                     _InfoChip(
                                       icon: Icons.accessibility_new,
@@ -242,6 +249,7 @@ class _FitnessScreenState extends State<FitnessScreen> {
                             ),
                           ),
                         ],
+                      ),
                       ),
                     ),
                   ),
@@ -316,6 +324,25 @@ class _FitnessScreenState extends State<FitnessScreen> {
         );
       }
     });
+  }
+
+  void _openSetLogging(
+    BuildContext context,
+    AppState state,
+    WorkoutExercise exercise,
+  ) {
+    // useRootNavigator: false -- this app's go_router StatefulShellRoute
+    // gives each tab its own Navigator (rule #14/PR #51); a root-navigator
+    // sheet here would pop the wrong stack and appear to "hang".
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: false,
+      isScrollControlled: true,
+      builder: (sheetContext) => AppStateScope(
+        state: state,
+        child: SetLoggingSheet(state: state, exercise: exercise),
+      ),
+    );
   }
 
   void _showAlternative(

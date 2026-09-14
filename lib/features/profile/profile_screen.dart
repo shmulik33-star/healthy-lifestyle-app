@@ -146,6 +146,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             runSpacing:8,
             children:ProfileGoalsStore.options.map((goal)=>FilterChip(
               label:Text(goal),
+              // The theme's chipTheme.labelStyle is a fixed navy, which
+              // matches selectedColor (also navy) -- without this override
+              // a selected chip's label is invisible (navy text on navy).
+              labelStyle:goals.contains(goal)
+                  ?const TextStyle(color:Colors.white,fontFamily:'Rubik',fontSize:13.5,fontWeight:FontWeight.w500)
+                  :null,
               selected:goals.contains(goal),
               onSelected:(_)=>setState((){
                 goals=ProfileGoalsStore.toggleGoal(goals,goal);
@@ -248,6 +254,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             runSpacing:8,
             children:waterReminders.entries.map((e)=>ChoiceChip(
               label:Text(e.value),
+              labelStyle:selectedWaterReminder==e.key
+                  ?const TextStyle(color:Colors.white,fontFamily:'Rubik',fontSize:13.5,fontWeight:FontWeight.w500)
+                  :null,
               selected:selectedWaterReminder==e.key,
               onSelected:(_)=>setState(()=>waterReminderMinutes=e.key),
             )).toList(),
