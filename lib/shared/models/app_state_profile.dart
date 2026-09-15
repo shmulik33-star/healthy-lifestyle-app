@@ -134,6 +134,7 @@ extension AppStateCloudSyncBridge on AppState {
           'activityLevel': activityLevel,
           'workoutDaysPerWeek': workoutDaysPerWeek,
           'eatingStyle': eatingStyle,
+          'onboardingCompleted': onboardingCompleted,
           'equipment': Map<String, bool>.from(equipment),
           'foodDislikes': foodDislikes.toList(),
         },
@@ -258,6 +259,8 @@ extension AppStateCloudSyncBridge on AppState {
           (profile['workoutDaysPerWeek'] as num?)?.toInt() ??
               workoutDaysPerWeek;
       eatingStyle = profile['eatingStyle'] as String? ?? eatingStyle;
+      onboardingCompleted =
+          profile['onboardingCompleted'] as bool? ?? onboardingCompleted;
       final equipmentRaw = profile['equipment'];
       if (equipmentRaw is Map) {
         equipment.addAll(Map<String, dynamic>.from(equipmentRaw)
