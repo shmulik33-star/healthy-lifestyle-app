@@ -13,7 +13,7 @@ class HealthyLifestyleApp extends StatelessWidget {
     return MaterialApp.router(
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
-      title: 'אורח חיים בריא',
+      title: 'FIT HAPPENS',
       locale: const Locale('he', 'IL'),
       supportedLocales: const [Locale('he', 'IL')],
       localizationsDelegates: const [
