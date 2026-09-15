@@ -20,6 +20,18 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    if (state.pendingOpenProfileAfterOnboarding) {
+      state.pendingOpenProfileAfterOnboarding = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => AppStateScope(state: state, child: const ProfileScreen()),
+          ),
+        );
+      });
+    }
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) => Container(

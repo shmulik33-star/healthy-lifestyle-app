@@ -89,6 +89,11 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
       if (_primaryGoal != null) state.primaryGoal = _primaryGoal!;
       if (_goals.isNotEmpty) await ProfileGoalsStore.save(_goals);
       state.generateWeeklyPlan();
+      // "דלג" explicitly means "let me deal with this later" -- only
+      // "סיים" (saveFields) should send the user straight to the profile
+      // screen to review the computed calorie/protein suggestion and the
+      // other settings the wizard doesn't cover.
+      state.pendingOpenProfileAfterOnboarding = true;
     }
     widget.state.finishOnboarding();
   }

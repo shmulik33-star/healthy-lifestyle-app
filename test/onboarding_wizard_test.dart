@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:healthy_lifestyle_stage9/features/home/home_screen.dart';
 import 'package:healthy_lifestyle_stage9/features/onboarding/onboarding_wizard_screen.dart';
+import 'package:healthy_lifestyle_stage9/features/profile/profile_screen.dart';
 import 'package:healthy_lifestyle_stage9/shared/models/app_state.dart';
 
 void _useTallTestSurface(WidgetTester tester) {
@@ -68,6 +70,9 @@ void main() {
 
       expect(state.onboardingCompleted, isTrue);
       expect(state.currentWeight, 0);
+      // "דלג" is "I'll deal with this later" -- it must not force the
+      // user straight into the profile screen the way "סיים" does.
+      expect(state.pendingOpenProfileAfterOnboarding, isFalse);
     });
 
     testWidgets('walking through every page and tapping "סיים" saves the entered fields and finishes',
@@ -116,6 +121,36 @@ void main() {
 
       expect(state.onboardingCompleted, isTrue);
       expect(state.currentWeight, 71);
+      // "סיים" should send the user straight to the profile screen so
+      // they can review the computed calorie/protein suggestion and the
+      // settings the wizard itself doesn't cover.
+      expect(state.pendingOpenProfileAfterOnboarding, isTrue);
+    });
+  });
+
+  group('HomeScreen consumes pendingOpenProfileAfterOnboarding', () {
+    testWidgets('pushes ProfileScreen once, then does not re-trigger on further rebuilds',
+        (tester) async {
+      _useTallTestSurface(tester);
+      final state = AppState()..pendingOpenProfileAfterOnboarding = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppStateScope(
+            state: state,
+            child: Scaffold(body: HomeScreen(onNavigate: (_) {})),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ProfileScreen), findsOneWidget);
+      expect(state.pendingOpenProfileAfterOnboarding, isFalse);
+
+      // A later, unrelated rebuild must not push it again.
+      state.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileScreen), findsOneWidget);
     });
   });
 }

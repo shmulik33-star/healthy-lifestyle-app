@@ -498,6 +498,13 @@ class AppState extends ChangeNotifier {
   // false for a genuinely new account via the same resetForNewAccount ->
   // fresh-AppState-default path every other profile field uses (rule #15).
   bool onboardingCompleted = false;
+  // One-shot, in-memory-only signal (deliberately NOT in _toJson/_readJson
+  // or the cloud snapshot -- it's a same-session UI cue, not user data):
+  // set when the onboarding wizard's "סיים" finishes, consumed by
+  // HomeScreen to push ProfileScreen once so the user can review/confirm
+  // the calorie & protein suggestion and the other profile settings the
+  // wizard doesn't cover, then immediately reset to false.
+  bool pendingOpenProfileAfterOnboarding = false;
   final List<PantryItem> pantryItems = [];
   final List<CustomEquipmentItem> customEquipment = [];
   // Local-device-only marker: whether migrateLegacyCustomEquipment has ever
