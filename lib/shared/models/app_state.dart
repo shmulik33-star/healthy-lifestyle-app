@@ -491,6 +491,20 @@ class AppState extends ChangeNotifier {
   final Map<String,bool> shoppingChecked = {};
   final List<ShoppingItem> shoppingItems = [];
   bool shoppingInitialized = false;
+  // Whether this account has completed (or explicitly skipped) the
+  // first-run onboarding wizard (see OnboardingWizardScreen). Synced via
+  // the cloud profile snapshot (like other profile flags) so a second
+  // device signing into the same account doesn't see it again; resets to
+  // false for a genuinely new account via the same resetForNewAccount ->
+  // fresh-AppState-default path every other profile field uses (rule #15).
+  bool onboardingCompleted = false;
+  // One-shot, in-memory-only signal (deliberately NOT in _toJson/_readJson
+  // or the cloud snapshot -- it's a same-session UI cue, not user data):
+  // set when the onboarding wizard's "סיים" finishes, consumed by
+  // HomeScreen to push ProfileScreen once so the user can review/confirm
+  // the calorie & protein suggestion and the other profile settings the
+  // wizard doesn't cover, then immediately reset to false.
+  bool pendingOpenProfileAfterOnboarding = false;
   final List<PantryItem> pantryItems = [];
   final List<CustomEquipmentItem> customEquipment = [];
   // Local-device-only marker: whether migrateLegacyCustomEquipment has ever
@@ -659,6 +673,7 @@ class AppState extends ChangeNotifier {
     'workoutSetLogs':workoutSetLogs.map((e)=>e.toJson()).toList(),
     'shoppingChecked':shoppingChecked,
     'shoppingItems':shoppingItems.map((e)=>e.toJson()).toList(),'shoppingInitialized':shoppingInitialized,
+    'onboardingCompleted':onboardingCompleted,
     'pantryItems':pantryItems.map((e)=>e.toJson()).toList(),
     'customEquipment':customEquipment.map((e)=>e.toJson()).toList(),
     'customEquipmentMigrated':customEquipmentMigrated,
@@ -701,6 +716,7 @@ class AppState extends ChangeNotifier {
     if (j['shoppingChecked'] is Map) { for (final e in Map<String,dynamic>.from(j['shoppingChecked']).entries) { shoppingChecked[e.key]=e.value==true; } }
     shoppingItems..clear()..addAll(((j['shoppingItems'] as List?)??[]).map((e)=>ShoppingItem.fromJson(Map<String,dynamic>.from(e))));
     shoppingInitialized=j['shoppingInitialized']==true;
+    onboardingCompleted=j['onboardingCompleted']==true;
     pantryItems..clear()..addAll(((j['pantryItems'] as List?)??[]).map((e)=>PantryItem.fromJson(Map<String,dynamic>.from(e))));
     customEquipment..clear()..addAll(((j['customEquipment'] as List?)??[]).map((e)=>CustomEquipmentItem.fromJson(Map<String,dynamic>.from(e))));
     customEquipmentMigrated=j['customEquipmentMigrated']==true;
@@ -839,6 +855,15 @@ class AppState extends ChangeNotifier {
   void addWater(){ensureCurrentDay();if(waterCups<20)waterCups++;notifyListeners();_save();}
   void completeWorkout(){ensureCurrentDay();workoutCompleted=true;notifyListeners();_save();}
   void toggleEquipment(String name,bool value){equipment[name]=value;notifyListeners();_save();}
+
+  /// Marks the first-run onboarding wizard as done (or explicitly
+  /// skipped) and persists it -- AppStateGate stops showing
+  /// OnboardingWizardScreen once this is true. Call after any profile
+  /// fields the wizard collected have already been set directly on this
+  /// instance (same "set fields, then notify+save once" pattern as
+  /// _profileAddWeight/toggleEquipment above), so this single call covers
+  /// both.
+  void finishOnboarding(){onboardingCompleted=true;notifyListeners();_save();}
 
   void updateProfile({
     required String name,required double weight,required double target,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/equipment/equipment_item.dart';
+import '../features/onboarding/onboarding_wizard_screen.dart';
 import '../features/profile/auth_gate_screen.dart';
 import '../features/profile/cloud_sync_service.dart';
 import '../features/profile/daily_progress_sync_service.dart';
@@ -149,6 +150,18 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
         child: AuthGateScreen(state: currentState),
       );
     }
-    return AppStateScope(state: currentState, child: widget.child);
+    // onboardingCompleted can flip mid-session (the wizard's own "סיים"/
+    // "דלג" calling AppState.finishOnboarding()), so this needs to react to
+    // it the same way the rest of the app reacts to AppState changes --
+    // AnimatedBuilder, not a one-time check at build time.
+    return AppStateScope(
+      state: currentState,
+      child: AnimatedBuilder(
+        animation: currentState,
+        builder: (context, _) => currentState.onboardingCompleted
+            ? widget.child
+            : OnboardingWizardScreen(state: currentState),
+      ),
+    );
   }
 }
