@@ -136,8 +136,17 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final currentState = state;
     if (currentState == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/branding/app_logo.png', width: 72, height: 72),
+              const SizedBox(height: 20),
+              const CircularProgressIndicator(),
+            ],
+          ),
+        ),
       );
     }
     // Gate on auth, not on local data readiness: AppState is always loaded
