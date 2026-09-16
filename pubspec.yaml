@@ -32,6 +32,7 @@ flutter:
   assets:
     - assets/audio/workout_background_music.mp3
     - assets/audio/rest_countdown_5to1.mp3
+    - assets/branding/app_logo.png
   fonts:
     - family: Rubik
       fonts:

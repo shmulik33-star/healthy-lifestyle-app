@@ -1,11 +1,11 @@
 {
-    "name": "healthy_lifestyle_stage8",
-    "short_name": "healthy_lifestyle_stage8",
+    "name": "FIT HAPPENS",
+    "short_name": "FIT HAPPENS",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#28536B",
+    "theme_color": "#28536B",
+    "description": "FIT HAPPENS -- תזונה, כושר ואורח חיים בריא.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
