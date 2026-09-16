@@ -178,12 +178,18 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.favorite, size: 48, color: Colors.pinkAccent),
+                  Image.asset('assets/branding/app_logo.png', width: 72, height: 72),
                   const SizedBox(height: 12),
+                  const Text(
+                    'FIT HAPPENS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
                   const Text(
                     'ברוכים הבאים',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
                   const Text(
