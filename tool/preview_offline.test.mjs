@@ -110,24 +110,21 @@ test('Preview preparation uses local renderer, removes external stylesheet and h
   try {
     await mkdir(join(directory,'canvaskit'));
     await mkdir(join(directory,'assets'));
+    await mkdir(join(directory,'assets/assets/fonts'),{recursive:true});
     const files={
       'index.html':'<!DOCTYPE html><link href="https://fonts.googleapis.com/css2?family=Rubik" rel="stylesheet">',
       'flutter_bootstrap.js':'_flutter.buildConfig={};\n_flutter.loader.load({serviceWorkerSettings:{}});',
       'main.dart.js':'console.log("app");',
       'canvaskit/canvaskit.js':'renderer',
       'canvaskit/canvaskit.wasm':'wasm',
-      'assets/FontManifest.json':'[]',
+      'assets/FontManifest.json':JSON.stringify([{family:'Rubik',fonts:[{weight:400,asset:'assets/fonts/Rubik-Regular.ttf'}]}]),
+      'assets/assets/fonts/Rubik-Regular.ttf':'bundled font',
     };
     for(const [path,content] of Object.entries(files)) await writeFile(join(directory,path),content);
-    const flutterRoot=join(directory,'sdk');
-    const sdkFonts=join(flutterRoot,'bin/cache/artifacts/material_fonts');
-    await mkdir(sdkFonts,{recursive:true});
-    await writeFile(join(sdkFonts,'roboto-regular.ttf'),'font');
-    await writeFile(join(sdkFonts,'roboto_license.txt'),'license');
-    const result=await preparePreviewOffline(directory,{flutterRoot});
-    assert.equal(result.assetCount,8);
+    const result=await preparePreviewOffline(directory);
+    assert.equal(result.assetCount,7);
     const fonts=JSON.parse(await readFile(join(directory,'assets/FontManifest.json'),'utf8'));
-    assert.equal(fonts[0].family,'Roboto');
+    assert.equal(fonts.find(font=>font.family==='Roboto').fonts[0].asset,'assets/fonts/Rubik-Regular.ttf');
     const bootstrap=await readFile(join(directory,'flutter_bootstrap.js'),'utf8');
     assert.match(bootstrap,/canvasKitBaseUrl:'canvaskit\/'/);
     assert.match(bootstrap,/canvasKitVariant:'full'/);
@@ -138,7 +135,7 @@ test('Preview preparation uses local renderer, removes external stylesheet and h
     assert.match(worker,/sha256-/);
     assert.ok(!worker.includes('skipWaiting()'));
     assert.doesNotMatch(worker,/\b(?:localStorage|indexedDB)\s*[.(]/);
-    assert.deepEqual(await preparePreviewOffline(directory,{flutterRoot}),result);
+    assert.deepEqual(await preparePreviewOffline(directory),result);
   } finally {
     await rm(directory,{recursive:true,force:true});
   }

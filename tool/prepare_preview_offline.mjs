@@ -1,4 +1,4 @@
-import {readFile,writeFile,readdir,mkdir,copyFile} from 'node:fs/promises';
+import {readFile,writeFile,readdir} from 'node:fs/promises';
 import {resolve,join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
@@ -11,23 +11,21 @@ export function isStaticAsset(path) {
     'canvaskit/canvaskit.js','canvaskit/canvaskit.wasm'].includes(path) ||
     /^(assets|icons)\//.test(path);
 }
-export async function preparePreviewOffline(directory,{flutterRoot=process.env.FLUTTER_ROOT}={}) {
+export async function preparePreviewOffline(directory) {
   const root=resolve(directory);
   const bootstrapPath=join(root,'flutter_bootstrap.js');
   const bootstrap=await readFile(bootstrapPath,'utf8');
-  if(!flutterRoot) throw new Error('FLUTTER_ROOT is required for the bundled default font');
-  // Flutter otherwise downloads default Roboto during engine initialization,
-  // even though the application's own theme uses its bundled Rubik family.
-  const sdkFonts=join(flutterRoot,'bin/cache/artifacts/material_fonts');
+  // Flutter downloads default Roboto unless that family exists in the manifest.
+  // Alias the existing bundled Rubik regular face for that default role too;
+  // no dependency on obsolete SDK Roboto files, new fonts or remote downloads.
   const fontManifestPath=join(root,'assets/FontManifest.json');
   const fonts=JSON.parse(await readFile(fontManifestPath,'utf8'));
-  await mkdir(join(root,'assets/fonts'),{recursive:true});
-  await copyFile(join(sdkFonts,'roboto-regular.ttf'),join(root,'assets/fonts/Roboto-Regular.ttf'));
-  await copyFile(join(sdkFonts,'roboto_license.txt'),join(root,'assets/fonts/Roboto-LICENSE.txt'));
-  if(!fonts.some(font=>font.family==='Roboto')) {
-    fonts.push({family:'Roboto',fonts:[{asset:'fonts/Roboto-Regular.ttf'}]});
-  }
-  await writeFile(fontManifestPath,JSON.stringify(fonts));
+  const regular=fonts.find(font=>font.family==='Rubik')?.fonts.find(font=>font.weight===400);
+  if(regular?.asset!=='assets/fonts/Rubik-Regular.ttf') throw new Error('Bundled Rubik regular face required');
+  await readFile(join(root,'assets',regular.asset));
+  await writeFile(fontManifestPath,JSON.stringify([
+    ...fonts.filter(font=>font.family!=='Roboto'),{family:'Roboto',fonts:[{asset:regular.asset}]},
+  ]));
   const marker='_flutter.loader.load(';
   const preparedOffset=bootstrap.indexOf('(function startPreviewOffline(');
   const offset=preparedOffset>=0?preparedOffset:bootstrap.lastIndexOf(marker);

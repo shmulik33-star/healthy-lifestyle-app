@@ -290,8 +290,9 @@ With explicit approval to fix Preview only, added a CI-gated post-build step:
 - Explicit build-time static allowlist, SHA-256 integrity checks, versioned cache,
   complete install before readiness, no skipWaiting or automatic client reload.
   An update waits until the app's open windows close, protecting unsaved edits.
-- Local full CanvasKit (Safari and Chromium), existing bundled Rubik, and SDK
-  Roboto plus its license; remove external Google Fonts links in Preview output.
+- Local full CanvasKit (Safari and Chromium), existing bundled Rubik (also aliased
+  for the engine's default Roboto role); remove external Google Fonts links in
+  Preview output. No newly downloaded fonts or SDK-specific font dependency.
 - No API paths, POSTs, cross-origin requests, query URLs, source maps or unknown
   dynamic resources intercepted. Static downloads omit credentials. No cached
   password, cloud response or session cookie. No localStorage/IndexedDB changes.
@@ -306,6 +307,8 @@ browser rendered the login UI after full reload with network emulation offline
 and HTTP cache disabled; the test tab's network/cache overrides were restored.
 This test used an empty local origin, not a user's account, and does not establish
 offline authenticated restart on the phone. The default Roboto download warning
-found in that first pass motivated bundling the SDK font before final retesting.
+found in that first pass motivated a bundled default-font role. Initial CI then
+showed modern clean SDK installations lack the legacy Roboto file, so the final
+approach aliases the existing Rubik regular face for that role instead.
 Deployment and final phone retest are pending at this checkpoint. Production,
 Architect and all stored application data remain unchanged by this offline fix.
