@@ -148,10 +148,15 @@ private limiter Worker in `deploy --dry-run` mode; no Worker was uploaded.
 
 ### Preview setup still required
 
-1. Create `healthy-preview-cloud-runtime` in the clean Appwrite project with
-   sessions.write, rows.read, rows.write only and one-week expiry. The Console
-   form is prepared; key creation needs action-time approval. Verify transaction
-   API scope requirements with the minimal key; never silently broaden scopes.
+1. COMPLETED with action-time approval: created `healthy-preview-cloud-runtime`
+   in the clean Appwrite project with sessions.write, rows.read, rows.write only
+   and one-week expiry (created 2026-10-07). The minimal key successfully read a
+   migrated row, created a transaction, staged an owner no-op, read the staged
+   snapshot and rolled back. Application data and permissions were unchanged.
+   Reproduce with `tool/appwrite_transaction_probe.mjs`; it NEVER commits.
+   Appwrite returned status `failed` after the acknowledged rollback, not
+   `rolled_back`. This probe does not validate commit/concurrent-write behavior.
+   The temporary local key file was removed after testing; no key is committed.
 2. Deploy the private limiter using its own Wrangler config, then bind it only
    to Pages Preview as `AUTH_RATE_LIMITER`. Do not change the existing AI binding.
 3. Add Preview-only encrypted secret `APPWRITE_API_KEY`, and Preview variables
@@ -173,3 +178,13 @@ private limiter Worker in `deploy --dry-run` mode; no Worker was uploaded.
 
 Supabase migration credentials still need rotation after use; do not paste them
 into chat. Temporary repair/audit cloud keys expire as recorded above.
+
+### Access checkpoint after key creation
+
+PR #61 initial GitHub verification passed (analyze, tests, build, existing
+Supabase-preview deploy and smoke checks). No Appwrite Preview gate was enabled.
+Cloudflare dashboard requires interactive sign-in, so Preview secret/binding
+setup is blocked on the user signing in. Wrangler `whoami --json` also crashes
+on this Windows runtime; do not infer an authenticated local CLI session.
+Cloudflare login tab was opened for user handoff. No Cloudflare settings,
+Appwrite production traffic or Supabase production configuration were changed.
