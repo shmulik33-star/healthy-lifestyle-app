@@ -148,3 +148,23 @@ jobs:
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/meal-estimate" "Meal-estimate production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/fitness-plan" "Fitness-plan production"
+
+  deploy-preview-auth-limiter:
+    # Private helper for this migration only. No main/production deployment.
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Deploy private preview auth limiter
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.148.0'
+          command: deploy --config infra/auth-rate-limit/wrangler.toml

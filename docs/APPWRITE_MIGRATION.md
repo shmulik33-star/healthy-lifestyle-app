@@ -188,3 +188,21 @@ setup is blocked on the user signing in. Wrangler `whoami --json` also crashes
 on this Windows runtime; do not infer an authenticated local CLI session.
 Cloudflare login tab was opened for user handoff. No Cloudflare settings,
 Appwrite production traffic or Supabase production configuration were changed.
+
+### Preview encrypted secret checkpoint
+
+After explicit approval to transmit the runtime key to Cloudflare, saved
+`APPWRITE_API_KEY` as an encrypted Secret at the project's Preview settings.
+Confirmed persistence by reloading Preview, then independently loading Production
+(no APPWRITE_API_KEY row), then reloading Preview again (encrypted row present).
+The dashboard uses misleading `production-server-...` DOM IDs even on Preview;
+those IDs alone do not establish the actual environment. No deletion was needed.
+The raw key was transferred only in memory between the two authorized consoles;
+it was not printed, copied into the clipboard, written to a file or committed.
+No Appwrite runtime enable flag, binding or frontend Preview gate has been enabled.
+
+Added a migration-PR-only CI job to deploy the existing private auth-limiter
+artifact after verification, using the already configured Cloudflare credential.
+This does not run on main or other PRs. Deployment/scopes are not yet verified;
+do not assume the existing Pages deploy token can deploy Workers. A failure must
+be surfaced, not worked around by silently broadening token permissions.
