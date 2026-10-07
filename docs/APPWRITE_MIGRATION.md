@@ -223,3 +223,32 @@ timestamp inside the transaction. This prevents same-millisecond writes from
 silently overwriting an edit. Added a regression test; 27 Node tests pass, and
 Flutter static analysis passes with lint infos only. Live commit/concurrency QA
 and food-conflict resolution UI are still outstanding.
+
+### Separate Worker deployment credential provisioned
+
+With explicit action-time approval, created account-owned Cloudflare token
+`healthy-preview-worker-deploy`, limited to Workers Scripts Write in the existing
+Cloudflare account, with the dashboard showing expiry October 15, 2026 (7 days).
+This permission is account-wide for Workers, not restricted to one script.
+Stored it as encrypted GitHub Actions repository secret
+`CLOUDFLARE_WORKERS_API_TOKEN`; verified the secret name/timestamp via GitHub.
+The temporary transfer file was removed after successful storage. The existing
+Pages credential and Architect remain unchanged. Enabled only the repository
+variable `APPWRITE_WORKER_DEPLOY_READY=true` and reran CI run 37612822593.
+Run 37612822593 completed successfully: all verification and Preview smoke checks
+passed, then the private Worker deployed with LOGIN_LIMIT (10 requests/60s), no
+public targets, version `904b14c7-bfca-4dd7-a46f-7093d98a71a5`.
+After this successful deployment, set `APPWRITE_WORKER_DEPLOY_READY=false` again
+to avoid unnecessary redeployment on every QA run (or failure when its short-lived
+deploy credential expires). Runtime service operation does not use this credential.
+
+Added Preview-only enable/origin variables and AUTH_RATE_LIMITER service binding
+to Wrangler config, explicitly retaining Preview's AI binding. No root/production
+Appwrite variables or services are configured. The encrypted runtime secret was
+already provisioned separately in Preview. Added a credentials-free HTTP smoke
+probe for disabled/absent production, unauthorized Preview access, origin rejection
+and malformed sign-in passing the private limiter before input validation. This
+probe does not contact an Appwrite account or write application data; it consumes
+one Preview rate-limit attempt. The frontend Appwrite gate remains off until this
+new deployment is verified. Password/login, commits and cross-device QA remain
+outstanding; a successful configuration probe is not proof of migration completion.

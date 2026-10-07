@@ -100,6 +100,10 @@ jobs:
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat preview"
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/fitness-plan" "Fitness-plan preview"
 
+      - name: Smoke-test Appwrite Preview isolation and private auth limiter
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration'
+        run: node tool/appwrite_preview_smoke.mjs
+
       - name: Set main as Cloudflare production branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
