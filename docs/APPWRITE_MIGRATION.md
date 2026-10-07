@@ -261,3 +261,13 @@ target implementing only HTTP fetch. Changed dispatch to prefer HTTP `.fetch`
 and strengthened the regression test with a throwing synthetic `.limit` method.
 27 Node tests pass. Live verification of this fix is still required. Added bounded
 503-only smoke retries for transient stable-hostname deployment propagation.
+
+Run 37618280989 still observed 503 during its short post-deploy window, but the
+subsequent direct live probe passed all four checks (production disabled/absent,
+Preview 401 without cookie, foreign-origin POST 403, same-origin malformed POST
+400 after limiter). This confirms the HTTP dispatch fix works in the deployed
+runtime. Extended only the 503 propagation wait to the existing smoke convention
+of 12 attempts at 5-second intervals. Other unexpected statuses still fail.
+With this backend configuration verified, enable `APPWRITE_PREVIEW_READY=true`
+for the migration PR's next build. This changes Preview only; production remains
+Supabase. Imported-password login and all user-data QA are still pending.

@@ -7,15 +7,15 @@ const preview='https://preview.healthy-lifestyle-app.pages.dev';
 const production='https://healthy-lifestyle-app.pages.dev';
 async function expect(origin,action,status,error,options={}) {
   let result;
-  for(let attempt=0;attempt<3;attempt++) {
+  for(let attempt=0;attempt<12;attempt++) {
     result=await fetch(`${origin}/api/cloud/${action}`,{
       ...options,signal:AbortSignal.timeout(20000),redirect:'error',
     });
     // Stable hostname propagation can briefly mix the preceding deployment.
     // Bounded retries do not turn a persistently unavailable service into a pass.
-    if(result.status!==503 || attempt===2) break;
+    if(result.status!==503 || attempt===11) break;
     await result.arrayBuffer();
-    await new Promise(resolve=>setTimeout(resolve,2000));
+    await new Promise(resolve=>setTimeout(resolve,5000));
   }
   assert.equal(result.status,status,`${origin}: ${action} HTTP status`);
   assert.deepEqual(await result.json(),{error},`${origin}: ${action} safe response`);
