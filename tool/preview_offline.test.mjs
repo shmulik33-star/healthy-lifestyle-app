@@ -4,10 +4,11 @@ import {runInNewContext} from 'node:vm';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {createServer} from 'node:http';
 import {previewOfflineWorker} from './preview_offline_worker.mjs';
 import {isStaticAsset,preparePreviewOffline} from './prepare_preview_offline.mjs';
 
-function harness({host='preview.healthy-lifestyle-app.pages.dev',failPath}={}) {
+function harness({host='preview.healthy-lifestyle-app.pages.dev',failPath,fetchAsset}={}) {
   const listeners={};
   const stores=new Map([['unrelated-user-cache',new Map()]]);
   const downloads=[];
@@ -35,6 +36,7 @@ function harness({host='preview.healthy-lifestyle-app.pages.dev',failPath}={}) {
     fetch:async request=>{
       downloads.push(request);
       if(offline || new URL(request.url).pathname===failPath) throw new Error('Unavailable');
+      if(fetchAsset) return fetchAsset(request);
       return new Response(new URL(request.url).pathname);
     },
   });
@@ -71,11 +73,43 @@ test('complete static cache starts navigation and assets without any network',as
   }
   await h.lifecycle('activate');
   h.setOffline();
-  assert.equal(await (await h.request('/',{mode:'navigate'})).text(),'/index.html');
+  assert.equal(await (await h.request('/',{mode:'navigate'})).text(),'/');
   assert.equal(await (await h.request('/main.dart.js')).text(),'/main.dart.js');
   assert.equal(h.downloads.length,3);
   assert.equal(h.getClaims(),1);
   assert.ok(h.stores.has('unrelated-user-cache'));
+});
+
+test('Pages canonical redirects cannot poison online or offline navigation responses',async()=>{
+  const server=createServer((request,response)=>{
+    if(request.url==='/index.html' || request.url==='/main.dart.js') {
+      response.writeHead(308,{location:'/'}).end();
+    } else response.writeHead(200,{'content-type':'text/html','x-static-test':'retained'}).end('verified shell');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const origin='http://127.0.0.1:'+server.address().port;
+  try {
+    const h=harness({fetchAsset:request=>fetch(origin+new URL(request.url).pathname)});
+    await h.lifecycle('install');
+    assert.equal(new URL(h.downloads[0].url).pathname,'/','Download canonical document, not redirect alias');
+    const redirected=await fetch(origin+'/index.html');
+    assert.equal(redirected.redirected,true,'Fixture must reproduce real followed redirect');
+    for(const path of ['/','/index.html','/main.dart.js']) {
+      const response=await h.request(path,{mode:'navigate'});
+      assert.equal(response.redirected,false,path);
+      assert.equal(response.headers.get('x-static-test'),'retained');
+      assert.equal(await response.text(),'verified shell');
+    }
+    // Defensively normalize previously cached redirected documents too.
+    h.stores.get('fit-preview-shell-version-a').set('/index.html',redirected);
+    h.setOffline();
+    const offline=await h.request('/',{mode:'navigate'});
+    assert.equal(offline.redirected,false);
+    assert.equal(await offline.text(),'verified shell');
+    assert.equal(h.downloads.length,3,'No offline network fallback');
+  } finally {
+    await new Promise(resolve=>server.close(resolve));
+  }
 });
 
 test('API, cross-origin, POST and query requests are never intercepted or cached',async()=>{

@@ -17,6 +17,10 @@ for(let attempt=0;attempt<12;attempt++) {
     const worker=await text(preview+'/flutter_service_worker.js');
     assert.ok(worker.includes(expected.version));
     assert.ok(worker.includes('fit-preview-shell-'));
+    assert.ok(worker.includes('function withoutRedirect(response)'));
+    const document=await fetch(preview+'/',{cache:'no-store',signal:AbortSignal.timeout(20000)});
+    assert.equal(document.status,200);
+    assert.equal(document.redirected,false,'Canonical navigation document must not redirect');
     const bootstrap=await text(preview+'/flutter_bootstrap.js');
     assert.ok(bootstrap.includes('function startPreviewOffline'));
     assert.ok(bootstrap.includes("canvasKitBaseUrl:'canvaskit/'"));

@@ -312,3 +312,21 @@ showed modern clean SDK installations lack the legacy Roboto file, so the final
 approach aliases the existing Rubik regular face for that role instead.
 Deployment and final phone retest are pending at this checkpoint. Production,
 Architect and all stored application data remain unchanged by this offline fix.
+
+### Follow-up: deployed canonical redirect broke cached navigation
+
+The user reported ERR_FAILED on Android and then desktop Chrome even online.
+The stable Preview server returns 308 from /index.html to /. The initial worker
+cached the followed-redirect Response and returned it for navigation. Browsers
+reject such responses when the navigation redirect mode is manual; local static
+hosting had no canonical redirect and therefore missed this production-host
+behavior. An in-app browser navigation also reproduced net::ERR_FAILED.
+
+The Preview-only worker now downloads the canonical root document (still SRI
+checked against the built index.html bytes) and strips redirect URL metadata by
+constructing a fresh Response with the verified body, status and headers when
+needed, including on cache hits. A real local HTTP 308 regression fixture covers
+both online and offline navigation and previously cached redirected responses.
+The deployment smoke check also requires a non-redirected canonical root and
+the updated worker. No skipWaiting, user-data clearing or production changes.
+Phone cold reopening and browser recovery must still be rechecked after deploy.
