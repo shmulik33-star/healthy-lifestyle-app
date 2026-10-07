@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'cloud_gateway.dart';
 
 import '../../shared/models/app_state.dart';
 
@@ -14,10 +14,8 @@ import '../../shared/models/app_state.dart';
 class DailyProgressSyncService {
   DailyProgressSyncService._();
 
-  static SupabaseClient get _client => Supabase.instance.client;
-
   static AppState? _state;
-  static StreamSubscription<AuthState>? _authSubscription;
+  static StreamSubscription<CloudUser?>? _authSubscription;
   static Timer? _debounceTimer;
   static Timer? _pollTimer;
   static bool _running = false;
@@ -25,7 +23,7 @@ class DailyProgressSyncService {
   static bool _applyingRemote = false;
   static String _lastFingerprint = '';
 
-  static bool get _isSignedIn => _client.auth.currentUser != null;
+  static bool get _isSignedIn => CloudGateway.currentUser != null;
 
   static void startAutomaticSync(AppState state) {
     if (identical(_state, state)) {
@@ -38,8 +36,8 @@ class DailyProgressSyncService {
     _lastFingerprint = _fingerprint(state);
     state.addListener(_handleStateChanged);
 
-    _authSubscription = _client.auth.onAuthStateChange.listen((authState) {
-      if (authState.session == null) {
+    _authSubscription = CloudGateway.authChanges.listen((user) {
+      if (user == null) {
         _debounceTimer?.cancel();
         _pending = false;
         return;
@@ -127,12 +125,10 @@ class DailyProgressSyncService {
 
   static Future<void> syncNow() async {
     final state = _state;
-    final user = _client.auth.currentUser;
+    final user = CloudGateway.currentUser;
     if (state == null || user == null) return;
 
-    final response = await _client
-        .from('user_daily_progress')
-        .select('day_key,water_cups,steps,workout_completed');
+    final response = await CloudGateway.readDaily(user.id);
 
     final remoteByDay = <String, Map<String, dynamic>>{};
     for (final raw in response) {
@@ -157,15 +153,12 @@ class DailyProgressSyncService {
           localWater > remoteWater ||
           localSteps > remoteSteps ||
           (localWorkout && !remoteWorkout)) {
-        await _client.rpc(
-          'merge_user_daily_progress',
-          params: {
-            'p_day_key': dayKey,
-            'p_water_cups': localWater,
-            'p_steps': localSteps,
-            'p_workout_completed': localWorkout,
-          },
-        );
+        await CloudGateway.mergeDaily({
+          'p_day_key': dayKey,
+          'p_water_cups': localWater,
+          'p_steps': localSteps,
+          'p_workout_completed': localWorkout,
+        }, user.id);
       }
     }
 
@@ -193,16 +186,21 @@ class DailyProgressSyncService {
       final localSteps = (local['steps'] as num?)?.toInt() ?? 0;
       final existingWater = (existing['waterCups'] as num?)?.toInt() ?? 0;
       final existingSteps = (existing['steps'] as num?)?.toInt() ?? 0;
-      existing['waterCups'] =
-          localWater > existingWater ? localWater : existingWater;
-      existing['steps'] = localSteps > existingSteps ? localSteps : existingSteps;
+      existing['waterCups'] = localWater > existingWater
+          ? localWater
+          : existingWater;
+      existing['steps'] = localSteps > existingSteps
+          ? localSteps
+          : existingSteps;
       existing['workoutCompleted'] =
-          existing['workoutCompleted'] == true || local['workoutCompleted'] == true;
+          existing['workoutCompleted'] == true ||
+          local['workoutCompleted'] == true;
     }
 
     final merged = mergedByDay.values.toList()
-      ..sort((a, b) =>
-          (a['dayKey'] as String).compareTo(b['dayKey'] as String));
+      ..sort(
+        (a, b) => (a['dayKey'] as String).compareTo(b['dayKey'] as String),
+      );
 
     _applyingRemote = true;
     try {

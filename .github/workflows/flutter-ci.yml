@@ -22,6 +22,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Test cloud adapter and migration safeguards
+        run: node --test tool/*.test.mjs
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -38,8 +46,19 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build web
-        run: flutter build web --release
+      - name: Verify Appwrite preview build
+        run: flutter build web --release --dart-define=CLOUD_BACKEND=appwrite
+
+      - name: Build deployment web bundle
+        env:
+          # Explicit gate: never switch main/production as part of migration QA.
+          APPWRITE_PREVIEW: ${{ github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true' }}
+        run: |
+          if [ "$APPWRITE_PREVIEW" = "true" ]; then
+            flutter build web --release --dart-define=CLOUD_BACKEND=appwrite
+          else
+            flutter build web --release --dart-define=CLOUD_BACKEND=supabase
+          fi
 
       # All pull requests share one stable Cloudflare preview hostname.
       # This keeps Flutter Web local storage (SharedPreferences) on the same origin
