@@ -206,3 +206,20 @@ artifact after verification, using the already configured Cloudflare credential.
 This does not run on main or other PRs. Deployment/scopes are not yet verified;
 do not assume the existing Pages deploy token can deploy Workers. A failure must
 be surfaced, not worked around by silently broadening token permissions.
+
+### Limiter deployment permission blocker
+
+Run 37612002161 verified the app successfully, but the separate Worker deployment
+job failed with `No access to the specified resource` at the Workers deployments
+API. The existing Pages credential has not been altered or expanded. Changed the
+job to require a separate `CLOUDFLARE_WORKERS_API_TOKEN` and an explicit repository
+variable `APPWRITE_WORKER_DEPLOY_READY=true`; until provisioned the job is skipped,
+not fixed. The frontend Appwrite gate and server enable flag remain off.
+Any new Cloudflare credential needs explicit approval; use minimal Workers-script
+deployment permissions, account restriction and short expiry, separate from Pages.
+
+Also strengthened food CAS to compare both the last observed payload and server
+timestamp inside the transaction. This prevents same-millisecond writes from
+silently overwriting an edit. Added a regression test; 27 Node tests pass, and
+Flutter static analysis passes with lint infos only. Live commit/concurrency QA
+and food-conflict resolution UI are still outstanding.

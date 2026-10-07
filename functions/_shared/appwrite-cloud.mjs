@@ -34,6 +34,22 @@ function safeRow(row) {
   if (typeof result.payload==='string') result.payload=JSON.parse(result.payload);
   return result;
 }
+function canonical(value) {
+  if(Array.isArray(value)) return value.map(canonical);
+  if(object(value)) return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]));
+  return value;
+}
+export function matchesFoodVersion(remote,expected) {
+  if(!remote) return expected.expectedUpdatedAt==null && expected.expectedPayload==null;
+  if(typeof expected.expectedUpdatedAt!=='string' || !object(expected.expectedPayload)) return false;
+  const stamp=new Date(remote.updated_at).getTime();
+  const expectedStamp=new Date(expected.expectedUpdatedAt).getTime();
+  const payload=typeof remote.payload==='string'?JSON.parse(remote.payload):remote.payload;
+  // A timestamp alone can collide within one millisecond. Compare the content
+  // observed by the client as well, inside the staged transaction snapshot.
+  return Number.isFinite(stamp) && stamp===expectedStamp && object(payload) &&
+    JSON.stringify(canonical(payload))===JSON.stringify(canonical(expected.expectedPayload));
+}
 function response(body,status=200,extra={}) {
   return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8',
     'cache-control':'no-store','x-content-type-options':'nosniff',...extra}});
@@ -214,9 +230,7 @@ export async function handleCloud(request,env,action,fetcher=fetch) {
       if(!Array.isArray(body.rows)||body.rows.length>100) throw new CloudError('invalid_input');
       for(const row of body.rows) {foodId(row.food_id);requireObject(row.payload);}
       for(const row of body.rows) await repo.mutate('user_custom_foods',['food_id',row.food_id],remote=>{
-        const remoteStamp=remote?new Date(remote.updated_at).getTime():null;
-        const expected=row.expectedUpdatedAt==null?null:new Date(row.expectedUpdatedAt).getTime();
-        if(remoteStamp!==expected) throw new CloudError('conflict',409);
+        if(!matchesFoodVersion(remote,row)) throw new CloudError('conflict',409);
         return {food_id:row.food_id,payload:JSON.stringify(row.payload)};
       });
       return response({ok:true});

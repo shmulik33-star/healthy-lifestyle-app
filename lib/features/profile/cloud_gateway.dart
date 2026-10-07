@@ -256,6 +256,7 @@ class CloudGateway {
                   'food_id': row['food_id'],
                   'payload': row['payload'],
                   'expectedUpdatedAt': row['expectedUpdatedAt'],
+                  'expectedPayload': row['expectedPayload'],
                 },
               )
               .toList(),

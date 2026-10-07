@@ -732,6 +732,7 @@ class CloudSyncService {
 
     final cloudById = <String, FoodItem>{};
     final cloudUpdatedAt = <String, DateTime>{};
+    final cloudPayloads = <String, Map<String, dynamic>>{};
     for (final raw in response) {
       final row = Map<String, dynamic>.from(raw as Map);
       final payload = row['payload'];
@@ -740,6 +741,7 @@ class CloudSyncService {
         final food = FoodItem.fromJson(Map<String, dynamic>.from(payload));
         if (food.id.trim().isNotEmpty) {
           cloudById[food.id] = food;
+          cloudPayloads[food.id] = Map<String, dynamic>.from(payload);
           final ts = DateTime.tryParse(row['updated_at']?.toString() ?? '');
           if (ts != null) cloudUpdatedAt[food.id] = ts;
         }
@@ -850,6 +852,7 @@ class CloudSyncService {
         'updated_at': (localTs ?? DateTime.now().toUtc()).toIso8601String(),
         if (CloudGateway.useAppwrite)
           'expectedUpdatedAt': remoteTs?.toIso8601String(),
+        if (CloudGateway.useAppwrite) 'expectedPayload': cloudPayloads[id],
       });
     }
 

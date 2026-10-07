@@ -151,7 +151,7 @@ jobs:
 
   deploy-preview-auth-limiter:
     # Private helper for this migration only. No main/production deployment.
-    if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration'
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_WORKER_DEPLOY_READY == 'true'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -164,7 +164,7 @@ jobs:
       - name: Deploy private preview auth limiter
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.148.0'
           command: deploy --config infra/auth-rate-limit/wrangler.toml

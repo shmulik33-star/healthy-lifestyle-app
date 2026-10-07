@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CloudError,createRepository,handleCloud,mergeDaily,sessionCookie} from '../functions/_shared/appwrite-cloud.mjs';
+import {CloudError,createRepository,handleCloud,mergeDaily,sessionCookie,matchesFoodVersion} from '../functions/_shared/appwrite-cloud.mjs';
 
 const origin='https://preview.healthy-lifestyle-app.pages.dev';
 const env={APPWRITE_PREVIEW_ENABLED:'true',APPWRITE_API_KEY:'server-secret',
@@ -10,6 +10,16 @@ const request=(action,body,headers={})=>new Request(`${origin}/api/cloud/${actio
     cookie:'__Host-fit-appwrite=session-secret','x-fit-expected-user':'owner',...headers},
   body:body===undefined?undefined:JSON.stringify(body)});
 const json=value=>new Response(JSON.stringify(value));
+
+test('food CAS compares content as well as timestamps, preventing same-millisecond overwrite',()=>{
+  const updated_at='2026-10-07T10:00:00.123Z';
+  const expected={expectedUpdatedAt:updated_at,expectedPayload:{name:'old',nested:{a:1,b:2}}};
+  assert.equal(matchesFoodVersion({updated_at,payload:'{"nested":{"b":2,"a":1},"name":"old"}'},expected),true);
+  assert.equal(matchesFoodVersion({updated_at,payload:'{"name":"new"}'},expected),false);
+  assert.equal(matchesFoodVersion({updated_at,payload:'{}'},{expectedUpdatedAt:updated_at}),false);
+  assert.equal(matchesFoodVersion(null,{expectedUpdatedAt:null,expectedPayload:null}),true);
+  assert.equal(matchesFoodVersion(null,expected),false);
+});
 
 test('daily merge is monotonic and rejects malformed logical days and counters',()=>{
   assert.deepEqual(mergeDaily({water_cups:8,steps:100,workout_completed:true},
