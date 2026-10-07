@@ -175,13 +175,15 @@ export async function handleCloud(request,env,action,fetcher=fetch) {
       const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`auth:${ip}`));
       const key=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
       let allowed;
-      if(env.AUTH_RATE_LIMITER.limit) allowed=(await env.AUTH_RATE_LIMITER.limit({key})).success;
-      else {
+      // Service bindings expose dynamic RPC methods, so a truthy `.limit`
+      // does not establish that this is a native rate-limit binding. Prefer
+      // the explicitly implemented HTTP interface when `.fetch` is present.
+      if(typeof env.AUTH_RATE_LIMITER.fetch==='function') {
         const limit=await env.AUTH_RATE_LIMITER.fetch('https://internal/limit',{
           method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key})});
         if(!limit.ok) throw new CloudError('auth_not_configured',503);
         allowed=(await limit.json()).success;
-      }
+      } else allowed=(await env.AUTH_RATE_LIMITER.limit({key})).success;
       if(allowed!==true) throw new CloudError('rate_limited',429);
       if(typeof body.email!=='string'||body.email.length>254||!body.email.includes('@')||
         typeof body.password!=='string'||body.password.length>256||!body.password.length) throw new CloudError('invalid_input');

@@ -23,6 +23,9 @@ test('Pages service-binding limiter hashes IP and fails closed on service outage
     headers:{origin,'content-type':'application/json','cf-connecting-ip':'192.0.2.1'},
     body:JSON.stringify({email:'test@example.test',password:'password8'})});
   const env={APPWRITE_PREVIEW_ENABLED:'true',APPWRITE_API_KEY:'test',AUTH_RATE_LIMITER:{
+    // A real Fetcher can expose a dynamic RPC method even when the target does
+    // not implement it. HTTP service binding must take precedence.
+    limit:async()=>assert.fail('must not invoke synthetic RPC limit method'),
     fetch:async(url,options)=>{
       assert.equal(url,'https://internal/limit');
       assert.match(JSON.parse(options.body).key,/^[a-f0-9]{64}$/);

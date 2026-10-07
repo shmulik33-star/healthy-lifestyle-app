@@ -252,3 +252,12 @@ probe does not contact an Appwrite account or write application data; it consume
 one Preview rate-limit attempt. The frontend Appwrite gate remains off until this
 new deployment is verified. Password/login, commits and cross-device QA remain
 outstanding; a successful configuration probe is not proof of migration completion.
+
+The first configuration smoke (run 37617513024) failed. Subsequent credentials-free
+HTTP probes confirmed origin rejection works, but the same-origin malformed
+sign-in persistently returned cloud_unavailable. The adapter selected `.limit`
+before `.fetch`; a service binding can expose a synthetic RPC method despite the
+target implementing only HTTP fetch. Changed dispatch to prefer HTTP `.fetch`
+and strengthened the regression test with a throwing synthetic `.limit` method.
+27 Node tests pass. Live verification of this fix is still required. Added bounded
+503-only smoke retries for transient stable-hostname deployment propagation.
