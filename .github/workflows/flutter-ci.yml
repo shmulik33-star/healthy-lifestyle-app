@@ -60,6 +60,10 @@ jobs:
             flutter build web --release --dart-define=CLOUD_BACKEND=supabase
           fi
 
+      - name: Prepare offline app shell for migration Preview only
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true'
+        run: node tool/prepare_preview_offline.mjs
+
       # All pull requests share one stable Cloudflare preview hostname.
       # This keeps Flutter Web local storage (SharedPreferences) on the same origin
       # while we move between PRs during manual testing.
@@ -104,7 +108,12 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration'
         run: node tool/appwrite_preview_smoke.mjs
 
+      - name: Smoke-test Preview-only offline files
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true'
+        run: node tool/preview_offline_deploy_smoke.mjs
+
       - name: Set main as Cloudflare production branch
+        # Production does not run the Preview offline preparation step.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

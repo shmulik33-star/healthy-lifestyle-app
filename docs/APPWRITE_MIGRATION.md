@@ -271,3 +271,41 @@ of 12 attempts at 5-second intervals. Other unexpected statuses still fail.
 With this backend configuration verified, enable `APPWRITE_PREVIEW_READY=true`
 for the migration PR's next build. This changes Preview only; production remains
 Supabase. Imported-password login and all user-data QA are still pending.
+
+### Manual QA and Preview-only offline boot fix
+
+The user subsequently reported imported-account login and manual sync success,
+phone-to-computer and computer-to-phone propagation, and a phone edit saved while
+offline then synchronized after reconnecting. These are user-reported functional
+checks, not an exhaustive isolation/concurrency audit. Cold offline reopening
+FAILED. The public deployed Flutter service worker was verified to be a cleanup
+stub that unregisters itself, not an offline cache. The default loader also used
+remote CanvasKit/default font resources.
+
+With explicit approval to fix Preview only, added a CI-gated post-build step:
+
+- Only the migration PR with APPWRITE_PREVIEW_READY=true is transformed. No source
+  web files or production build behavior change; the worker refuses installation
+  on the production hostname.
+- Explicit build-time static allowlist, SHA-256 integrity checks, versioned cache,
+  complete install before readiness, no skipWaiting or automatic client reload.
+  An update waits until the app's open windows close, protecting unsaved edits.
+- Local full CanvasKit (Safari and Chromium), existing bundled Rubik, and SDK
+  Roboto plus its license; remove external Google Fonts links in Preview output.
+- No API paths, POSTs, cross-origin requests, query URLs, source maps or unknown
+  dynamic resources intercepted. Static downloads omit credentials. No cached
+  password, cloud response or session cookie. No localStorage/IndexedDB changes.
+- Cache cleanup touches only this feature's versioned static-cache prefix and
+  retains one preceding static build. A failed install preserves the prior build.
+- A Hebrew preparation/ready/update-waiting status tells the user when initial
+  download is complete. Browser storage eviction can require online preparation
+  again; this is not a guarantee against the OS/browser clearing site storage.
+
+33 Node tests passed, including six offline-cache/build safety tests. A local
+browser rendered the login UI after full reload with network emulation offline
+and HTTP cache disabled; the test tab's network/cache overrides were restored.
+This test used an empty local origin, not a user's account, and does not establish
+offline authenticated restart on the phone. The default Roboto download warning
+found in that first pass motivated bundling the SDK font before final retesting.
+Deployment and final phone retest are pending at this checkpoint. Production,
+Architect and all stored application data remain unchanged by this offline fix.
