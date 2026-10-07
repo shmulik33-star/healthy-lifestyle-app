@@ -15,29 +15,37 @@ export function startPreviewOffline() {
     status.append(label,close);
     document.body.append(status);
     label.textContent='מכין את האפליקציה לפתיחה ללא אינטרנט…';
+    const readyText='האפליקציה מוכנה לפתיחה ללא אינטרנט';
     const showReady=()=>{
-      label.textContent='האפליקציה מוכנה לפתיחה ללא אינטרנט';
-      setTimeout(()=>status.remove(),15000);
+      label.textContent=readyText;
+      setTimeout(()=>{if(label.textContent===readyText) status.remove();},15000);
     };
     navigator.serviceWorker.register('flutter_service_worker.js',{
       scope:'/',updateViaCache:'none',
     }).then(registration=>{
       const observe=()=>{
+        if(!status.isConnected) document.body.append(status);
         if(registration.waiting) {
           label.textContent='עדכון מוכן. יופעל לאחר סגירת כל חלונות האפליקציה.';
         } else if(registration.active && !registration.installing) showReady();
         const installing=registration.installing;
-        if(installing) installing.addEventListener('statechange',()=>{
+        if(installing) {
+          label.textContent='מכין קבצים לפתיחה ללא אינטרנט…';
+          installing.addEventListener('statechange',()=>{
           if(installing.state==='activated') showReady();
           else if(installing.state==='installed' && registration.active) {
             label.textContent='עדכון מוכן. יופעל לאחר סגירת כל חלונות האפליקציה.';
           } else if(installing.state==='redundant') {
             label.textContent='ההכנה ללא רשת לא הושלמה. התחברו ופתחו שוב.';
           }
-        });
+          });
+        }
       };
       observe();
       registration.addEventListener('updatefound',observe);
+      // Check every online opening rather than depending on the browser's
+      // periodic update interval. Never activate/reload a waiting update.
+      if(registration.active && !registration.installing) registration.update().catch(()=>{});
     }).catch(()=>{
       label.textContent='ההכנה ללא רשת לא הושלמה. התחברו ופתחו שוב.';
     });

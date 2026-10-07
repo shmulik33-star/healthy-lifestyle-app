@@ -138,7 +138,7 @@ test('Preview preparation uses local renderer, removes external stylesheet and h
     assert.match(worker,/sha256-/);
     assert.ok(!worker.includes('skipWaiting()'));
     assert.doesNotMatch(worker,/\b(?:localStorage|indexedDB)\s*[.(]/);
-    await assert.rejects(preparePreviewOffline(directory),/Already prepared/);
+    assert.deepEqual(await preparePreviewOffline(directory,{flutterRoot}),result);
   } finally {
     await rm(directory,{recursive:true,force:true});
   }

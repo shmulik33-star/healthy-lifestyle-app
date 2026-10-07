@@ -15,7 +15,6 @@ export async function preparePreviewOffline(directory,{flutterRoot=process.env.F
   const root=resolve(directory);
   const bootstrapPath=join(root,'flutter_bootstrap.js');
   const bootstrap=await readFile(bootstrapPath,'utf8');
-  if(bootstrap.includes('function startPreviewOffline')) throw new Error('Already prepared; rebuild Flutter first');
   if(!flutterRoot) throw new Error('FLUTTER_ROOT is required for the bundled default font');
   // Flutter otherwise downloads default Roboto during engine initialization,
   // even though the application's own theme uses its bundled Rubik family.
@@ -30,8 +29,9 @@ export async function preparePreviewOffline(directory,{flutterRoot=process.env.F
   }
   await writeFile(fontManifestPath,JSON.stringify(fonts));
   const marker='_flutter.loader.load(';
-  const offset=bootstrap.lastIndexOf(marker);
-  if(offset<0 || bootstrap.indexOf(marker)!==offset) throw new Error('Unexpected Flutter bootstrap shape');
+  const preparedOffset=bootstrap.indexOf('(function startPreviewOffline(');
+  const offset=preparedOffset>=0?preparedOffset:bootstrap.lastIndexOf(marker);
+  if(offset<0 || (preparedOffset<0 && bootstrap.indexOf(marker)!==offset)) throw new Error('Unexpected Flutter bootstrap shape');
   await writeFile(bootstrapPath,bootstrap.slice(0,offset)+`(${startPreviewOffline.toString()})();\n`);
   const indexPath=join(root,'index.html');
   const index=await readFile(indexPath,'utf8');
