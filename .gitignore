@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local migration fingerprints/repair plans (never publish user-derived data).
+/tool/*.local.json
+/infra/auth-rate-limit/build/

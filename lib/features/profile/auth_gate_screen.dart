@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/models/app_state.dart';
 import 'cloud_sync_service.dart';
+import 'cloud_gateway.dart';
 import 'profile_goals_store.dart';
 
 /// Mandatory sign-in/sign-up screen shown by AppStateGate when there is no
@@ -75,6 +76,8 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
       await action();
     } on AuthException catch (error) {
       _setMessage(_friendlyAuthMessage(error), error: true);
+    } on CloudGatewayException catch (error) {
+      _setMessage(cloudGatewayMessage(error.code), error: true);
     } on PostgrestException catch (_) {
       _setMessage('לא הצלחתי להתחבר לענן. נסה שוב בעוד רגע.', error: true);
     } catch (_) {
@@ -92,7 +95,8 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
     if (text.contains('email not confirmed')) {
       return 'צריך לאשר את כתובת האימייל לפני ההתחברות.';
     }
-    if (text.contains('already registered') || text.contains('already been registered')) {
+    if (text.contains('already registered') ||
+        text.contains('already been registered')) {
       return 'כבר קיים חשבון עם כתובת האימייל הזאת. אפשר להתחבר.';
     }
     if (text.contains('password')) {
@@ -105,65 +109,70 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
   }
 
   Future<void> _signUp() => _runBusy(() async {
-        if (!_validateCredentials()) return;
-        final hasLocalData = widget.state.firstName.isNotEmpty ||
-            widget.state.customFoods.isNotEmpty ||
-            widget.state.meals.isNotEmpty ||
-            widget.state.pantryItems.isNotEmpty ||
-            widget.state.weights.length > 1;
-        if (hasLocalData) {
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('לאפס את הנתונים במכשיר הזה?'),
-              content: const Text(
-                'יש כבר נתונים מקומיים במכשיר הזה (שם, ארוחות, מזווה, משקל וכו׳). '
-                'כדי שהחשבון החדש יתחיל נקי, הנתונים המקומיים יאופסו לפני היצירה. '
-                'אם רצית להתחבר לחשבון קיים במקום זה, בטל ולחץ "התחבר".',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('ביטול'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: const Text('אפס והמשך'),
-                ),
-              ],
+    if (!_validateCredentials()) return;
+    if (CloudGateway.useAppwrite && _password.text.length < 8) {
+      _setMessage(cloudGatewayMessage('password_too_short'), error: true);
+      return;
+    }
+    final hasLocalData =
+        widget.state.firstName.isNotEmpty ||
+        widget.state.customFoods.isNotEmpty ||
+        widget.state.meals.isNotEmpty ||
+        widget.state.pantryItems.isNotEmpty ||
+        widget.state.weights.length > 1;
+    if (hasLocalData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('לאפס את הנתונים במכשיר הזה?'),
+          content: const Text(
+            'יש כבר נתונים מקומיים במכשיר הזה (שם, ארוחות, מזווה, משקל וכו׳). '
+            'כדי שהחשבון החדש יתחיל נקי, הנתונים המקומיים יאופסו לפני היצירה. '
+            'אם רצית להתחבר לחשבון קיים במקום זה, בטל ולחץ "התחבר".',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('ביטול'),
             ),
-          );
-          if (confirmed != true) return;
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('אפס והמשך'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
 
-          await widget.state.resetForNewAccount();
-          await ProfileGoalsStore.save([widget.state.primaryGoal]);
-          if (!mounted) return;
-        }
+      await widget.state.resetForNewAccount();
+      await ProfileGoalsStore.save([widget.state.primaryGoal]);
+      if (!mounted) return;
+    }
 
-        final response = await CloudSyncService.signUp(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        if (!mounted) return;
+    final response = await CloudSyncService.signUp(
+      email: _email.text.trim(),
+      password: _password.text,
+    );
+    if (!mounted) return;
 
-        if (response.session == null) {
-          _setMessage(
-            'נשלח אליך מייל לאימות החשבון. אשר את האימייל, חזור למסך הזה ולחץ „התחבר”.',
-          );
-        }
-        // If a session came back immediately, AppStateGate's own auth
-        // listener flips into the app on its own -- nothing else to do here.
-      });
+    if (!response.signedIn) {
+      _setMessage(
+        'נשלח אליך מייל לאימות החשבון. אשר את האימייל, חזור למסך הזה ולחץ „התחבר”.',
+      );
+    }
+    // If a session came back immediately, AppStateGate's own auth
+    // listener flips into the app on its own -- nothing else to do here.
+  });
 
   Future<void> _signIn() => _runBusy(() async {
-        if (!_validateCredentials()) return;
-        await CloudSyncService.signIn(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        // AppStateGate's own auth listener flips into the app once the
-        // session lands.
-      });
+    if (!_validateCredentials()) return;
+    await CloudSyncService.signIn(
+      email: _email.text.trim(),
+      password: _password.text,
+    );
+    // AppStateGate's own auth listener flips into the app once the
+    // session lands.
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +187,11 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Image.asset('assets/branding/app_logo.png', width: 72, height: 72),
+                  Image.asset(
+                    'assets/branding/app_logo.png',
+                    width: 72,
+                    height: 72,
+                  ),
                   const SizedBox(height: 12),
                   const Text(
                     'FIT HAPPENS',
@@ -218,7 +231,9 @@ class _AuthGateScreenState extends State<AuthGateScreen> {
                     textDirection: TextDirection.ltr,
                     decoration: const InputDecoration(
                       labelText: 'סיסמה',
-                      helperText: 'לפחות 6 תווים',
+                      helperText: CloudGateway.useAppwrite
+                          ? 'בהרשמה חדשה: לפחות 8 תווים'
+                          : 'לפחות 6 תווים',
                       border: OutlineInputBorder(),
                     ),
                   ),

@@ -4,3 +4,25 @@ compatibility_date = "2026-08-20"
 
 [ai]
 binding = "AI"
+
+# Approved Healthy production cutover. Secret remains server-side, never here.
+[vars]
+APPWRITE_PREVIEW_ENABLED = "true"
+APPWRITE_ORIGIN = "https://healthy-lifestyle-app.pages.dev"
+
+[[services]]
+binding = "AUTH_RATE_LIMITER"
+service = "healthy-appwrite-preview-auth-limit"
+
+# Preview keeps its separate origin and host-only session cookie.
+[env.preview.vars]
+APPWRITE_PREVIEW_ENABLED = "true"
+APPWRITE_ORIGIN = "https://preview.healthy-lifestyle-app.pages.dev"
+
+# Bindings are non-inheritable; preserve the existing AI features in Preview.
+[env.preview.ai]
+binding = "AI"
+
+[[env.preview.services]]
+binding = "AUTH_RATE_LIMITER"
+service = "healthy-appwrite-preview-auth-limit"

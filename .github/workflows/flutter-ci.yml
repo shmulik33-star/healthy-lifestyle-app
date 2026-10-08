@@ -22,6 +22,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Test cloud adapter and migration safeguards
+        run: node --test tool/*.test.mjs
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -38,8 +46,34 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build web
-        run: flutter build web --release
+      - name: Test Appwrite food conflict resolution without live accounts
+        run: flutter test --dart-define=CLOUD_BACKEND=appwrite test/appwrite_food_resolution_test.dart test/food_sync_conflict_test.dart
+
+      - name: Verify Appwrite preview build
+        run: flutter build web --release --dart-define=CLOUD_BACKEND=appwrite
+
+      - name: Build deployment web bundle
+        env:
+          # Explicit gate: never switch main/production as part of migration QA.
+          APPWRITE_PREVIEW: ${{ github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true' }}
+          APPWRITE_PRODUCTION: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.APPWRITE_PRODUCTION_READY == 'true' }}
+        run: |
+          if [ "$APPWRITE_PREVIEW" = "true" ] || [ "$APPWRITE_PRODUCTION" = "true" ]; then
+            flutter build web --release --dart-define=CLOUD_BACKEND=appwrite
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Approved Appwrite production gate must be enabled before deploying main."
+            exit 1
+          else
+            flutter build web --release --dart-define=CLOUD_BACKEND=supabase
+          fi
+
+      - name: Prepare offline app shell for migration Preview only
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true'
+        run: node tool/prepare_preview_offline.mjs
+
+      - name: Prepare offline app shell for approved Appwrite production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.APPWRITE_PRODUCTION_READY == 'true'
+        run: node tool/prepare_preview_offline.mjs --production
 
       # All pull requests share one stable Cloudflare preview hostname.
       # This keeps Flutter Web local storage (SharedPreferences) on the same origin
@@ -81,7 +115,20 @@ jobs:
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat preview"
           check_endpoint "https://preview.healthy-lifestyle-app.pages.dev/api/fitness-plan" "Fitness-plan preview"
 
+      - name: Smoke-test Appwrite Preview isolation and private auth limiter
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration'
+        env:
+          APPWRITE_PRODUCTION_READY: ${{ vars.APPWRITE_PRODUCTION_READY }}
+        run: node tool/appwrite_preview_smoke.mjs
+
+      - name: Smoke-test Preview-only offline files
+        if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_PREVIEW_READY == 'true'
+        env:
+          APPWRITE_PRODUCTION_READY: ${{ vars.APPWRITE_PRODUCTION_READY }}
+        run: node tool/preview_offline_deploy_smoke.mjs
+
       - name: Set main as Cloudflare production branch
+        # Production offline assets require their explicit approved build flag.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -129,3 +176,29 @@ jobs:
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/meal-estimate" "Meal-estimate production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/coach-chat" "Coach-chat production"
           check_endpoint "https://healthy-lifestyle-app.pages.dev/api/fitness-plan" "Fitness-plan production"
+
+      - name: Smoke-test approved Appwrite production and offline shell
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.APPWRITE_PRODUCTION_READY == 'true'
+        run: |
+          node tool/appwrite_preview_smoke.mjs --production
+          node tool/preview_offline_deploy_smoke.mjs --production
+
+  deploy-preview-auth-limiter:
+    # Private helper for this migration only. No main/production deployment.
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/appwrite-migration' && vars.APPWRITE_WORKER_DEPLOY_READY == 'true'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Deploy private preview auth limiter
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_WORKERS_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.148.0'
+          command: deploy --config infra/auth-rate-limit/wrangler.toml

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../features/profile/cloud_gateway.dart';
 
 import '../features/equipment/equipment_item.dart';
 import '../features/onboarding/onboarding_wizard_screen.dart';
@@ -27,15 +27,15 @@ class AppStateGate extends StatefulWidget {
   State<AppStateGate> createState() => _AppStateGateState();
 }
 
-class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver {
+class _AppStateGateState extends State<AppStateGate>
+    with WidgetsBindingObserver {
   AppState? state;
   Timer? _dayBoundaryTimer;
   Timer? _waterReminderTimer;
-  StreamSubscription<AuthState>? _authSubscription;
-  // supabase_flutter restores a persisted session synchronously during
-  // Supabase.initialize() (see main.dart), so this is already correct for a
-  // returning, previously-authenticated device the moment this widget
-  // builds -- no extra "remember me" plumbing needed for that case.
+  StreamSubscription<CloudUser?>? _authSubscription;
+  // Gateway initialization restores the backend's persisted session/identity
+  // hint before rendering. The Appwrite hint preserves offline access only;
+  // server requests always verify the real HttpOnly session independently.
   bool _signedIn = CloudSyncService.isSignedIn;
   // Tracks the last waterReminderMinutes we scheduled a Timer for, so the
   // AppState.notifyListeners() that fires on every unrelated state change
@@ -48,9 +48,8 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _authSubscription =
-        Supabase.instance.client.auth.onAuthStateChange.listen((authState) {
-      final signedIn = authState.session != null;
+    _authSubscription = CloudGateway.authChanges.listen((user) {
+      final signedIn = user != null;
       if (mounted && signedIn != _signedIn) {
         setState(() => _signedIn = signedIn);
       }
@@ -141,7 +140,11 @@ class _AppStateGateState extends State<AppStateGate> with WidgetsBindingObserver
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('assets/branding/app_logo.png', width: 72, height: 72),
+              Image.asset(
+                'assets/branding/app_logo.png',
+                width: 72,
+                height: 72,
+              ),
               const SizedBox(height: 20),
               const CircularProgressIndicator(),
             ],

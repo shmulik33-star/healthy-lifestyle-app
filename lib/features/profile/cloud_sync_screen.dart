@@ -3,6 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/models/app_state.dart';
 import 'cloud_sync_service.dart';
+import 'cloud_gateway.dart';
+import 'food_sync_conflict.dart';
+import 'food_conflict_card.dart';
 import 'profile_goals_store.dart';
 
 class CloudSyncScreen extends StatefulWidget {
@@ -62,16 +65,24 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       await action();
     } on AuthException catch (error) {
       _setMessage(_friendlyAuthMessage(error), error: true);
+    } on CloudGatewayException catch (error) {
+      _setMessage(cloudGatewayMessage(error.code), error: true);
     } on PostgrestException catch (_) {
       _setMessage('לא הצלחתי לסנכרן מול הענן. נסה שוב בעוד רגע.', error: true);
     } on StateError catch (error) {
       if (error.message == 'cloud_sync_requires_sign_in') {
         _setMessage('יש להתחבר לחשבון לפני הסנכרון.', error: true);
       } else {
-        _setMessage('אירעה שגיאה בסנכרון. הנתונים המקומיים נשארו שמורים.', error: true);
+        _setMessage(
+          'אירעה שגיאה בסנכרון. הנתונים המקומיים נשארו שמורים.',
+          error: true,
+        );
       }
     } catch (_) {
-      _setMessage('אירעה שגיאה. הנתונים המקומיים נשארו שמורים במכשיר.', error: true);
+      _setMessage(
+        'אירעה שגיאה. הנתונים המקומיים נשארו שמורים במכשיר.',
+        error: true,
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -85,7 +96,8 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     if (text.contains('email not confirmed')) {
       return 'צריך לאשר את כתובת האימייל לפני ההתחברות.';
     }
-    if (text.contains('already registered') || text.contains('already been registered')) {
+    if (text.contains('already registered') ||
+        text.contains('already been registered')) {
       return 'כבר קיים חשבון עם כתובת האימייל הזאת. אפשר להתחבר.';
     }
     if (text.contains('password')) {
@@ -98,80 +110,85 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   }
 
   Future<void> _signUp() => _runBusy(() async {
-        if (!_validateCredentials()) return;
-        // This device may already carry local/offline data (this app is
-        // local-first by design) -- from the account owner's own earlier
-        // use, or from someone else who used this device before. Without an
-        // explicit confirmation, that data would silently ride along into
-        // the brand-new account's first sync -- a stranger's name, weight
-        // history and meals showing up for someone who just signed up.
-        final hasLocalData = widget.state.firstName.isNotEmpty ||
-            widget.state.customFoods.isNotEmpty ||
-            widget.state.meals.isNotEmpty ||
-            widget.state.pantryItems.isNotEmpty ||
-            widget.state.weights.length > 1;
-        if (hasLocalData) {
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (dialogContext) => AlertDialog(
-              title: const Text('לאפס את הנתונים במכשיר הזה?'),
-              content: const Text(
-                'יש כבר נתונים מקומיים במכשיר הזה (שם, ארוחות, מזווה, משקל וכו׳). '
-                'כדי שהחשבון החדש יתחיל נקי, הנתונים המקומיים יאופסו לפני היצירה. '
-                'אם רצית להתחבר לחשבון קיים במקום זה, בטל ולחץ "התחבר".',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('ביטול'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: const Text('אפס והמשך'),
-                ),
-              ],
+    if (!_validateCredentials()) return;
+    if (CloudGateway.useAppwrite && _password.text.length < 8) {
+      _setMessage(cloudGatewayMessage('password_too_short'), error: true);
+      return;
+    }
+    // This device may already carry local/offline data (this app is
+    // local-first by design) -- from the account owner's own earlier
+    // use, or from someone else who used this device before. Without an
+    // explicit confirmation, that data would silently ride along into
+    // the brand-new account's first sync -- a stranger's name, weight
+    // history and meals showing up for someone who just signed up.
+    final hasLocalData =
+        widget.state.firstName.isNotEmpty ||
+        widget.state.customFoods.isNotEmpty ||
+        widget.state.meals.isNotEmpty ||
+        widget.state.pantryItems.isNotEmpty ||
+        widget.state.weights.length > 1;
+    if (hasLocalData) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('לאפס את הנתונים במכשיר הזה?'),
+          content: const Text(
+            'יש כבר נתונים מקומיים במכשיר הזה (שם, ארוחות, מזווה, משקל וכו׳). '
+            'כדי שהחשבון החדש יתחיל נקי, הנתונים המקומיים יאופסו לפני היצירה. '
+            'אם רצית להתחבר לחשבון קיים במקום זה, בטל ולחץ "התחבר".',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('ביטול'),
             ),
-          );
-          if (confirmed != true) return;
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('אפס והמשך'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
 
-          // Reset BEFORE calling signUp(), not after: CloudSyncService's
-          // automatic-sync auth listener fires the instant Supabase creates
-          // a session (immediately, if this project doesn't require email
-          // confirmation) and uploads whatever is in `state` right then. If
-          // the reset happened after signUp(), that listener could upload
-          // the old local data to the brand-new account a moment before our
-          // own reset ran -- and then sync would just merge it straight
-          // back down. Resetting first means there's nothing old left for
-          // that race to catch.
-          await widget.state.resetForNewAccount();
-          await ProfileGoalsStore.save([widget.state.primaryGoal]);
-          if (!mounted) return;
-        }
+      // Reset BEFORE calling signUp(), not after: CloudSyncService's
+      // automatic-sync auth listener fires the instant Supabase creates
+      // a session (immediately, if this project doesn't require email
+      // confirmation) and uploads whatever is in `state` right then. If
+      // the reset happened after signUp(), that listener could upload
+      // the old local data to the brand-new account a moment before our
+      // own reset ran -- and then sync would just merge it straight
+      // back down. Resetting first means there's nothing old left for
+      // that race to catch.
+      await widget.state.resetForNewAccount();
+      await ProfileGoalsStore.save([widget.state.primaryGoal]);
+      if (!mounted) return;
+    }
 
-        final response = await CloudSyncService.signUp(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        if (!mounted) return;
+    final response = await CloudSyncService.signUp(
+      email: _email.text.trim(),
+      password: _password.text,
+    );
+    if (!mounted) return;
 
-        if (response.session == null) {
-          _setMessage(
-            'נשלח אליך מייל לאימות החשבון. אשר את האימייל, חזור למסך הזה ולחץ „התחבר”.',
-          );
-          return;
-        }
-        await _sync(showSignedInMessage: true);
-      });
+    if (!response.signedIn) {
+      _setMessage(
+        'נשלח אליך מייל לאימות החשבון. אשר את האימייל, חזור למסך הזה ולחץ „התחבר”.',
+      );
+      return;
+    }
+    await _sync(showSignedInMessage: true);
+  });
 
   Future<void> _signIn() => _runBusy(() async {
-        if (!_validateCredentials()) return;
-        await CloudSyncService.signIn(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        if (!mounted) return;
-        await _sync(showSignedInMessage: true);
-      });
+    if (!_validateCredentials()) return;
+    await CloudSyncService.signIn(
+      email: _email.text.trim(),
+      password: _password.text,
+    );
+    if (!mounted) return;
+    await _sync(showSignedInMessage: true);
+  });
 
   Future<void> _sync({bool showSignedInMessage = false}) async {
     final result = await CloudSyncService.syncAllNow(widget.state);
@@ -180,10 +197,10 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     final stateNote = result.stateMerged
         ? ' הנתונים האישיים מוזגו בין המכשירים.'
         : result.stateDownloaded
-            ? ' הנתונים האישיים עודכנו מהענן.'
-            : result.stateUploaded
-                ? ' הנתונים האישיים נשמרו בענן.'
-                : ' הנתונים האישיים כבר מעודכנים.';
+        ? ' הנתונים האישיים עודכנו מהענן.'
+        : result.stateUploaded
+        ? ' הנתונים האישיים נשמרו בענן.'
+        : ' הנתונים האישיים כבר מעודכנים.';
     _setMessage(
       '$prefixהסנכרון הושלם. מזונות אישיים: ${result.foods.total} מסונכרנים.$stateNote',
     );
@@ -192,13 +209,40 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
 
   Future<void> _syncNow() => _runBusy(() => _sync());
 
+  Future<void> _keepBoth(FoodSyncConflict conflict) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('לשמור את שתי הגרסאות?'),
+        content: const Text(
+          'גרסת הענן תישמר קודם כפריט נפרד במכשיר. '
+          'לאחר מכן ננסה לסנכרן את שתי הגרסאות. אם המזון השתנה שוב, נבקש בדיקה נוספת.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('ביטול'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('שמור את שתיהן'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runBusy(() async {
+      await CloudSyncService.keepBothFoodVersions(widget.state, conflict);
+      await _sync();
+    });
+  }
+
   Future<void> _signOut() => _runBusy(() async {
-        await CloudSyncService.signOut();
-        _setMessage(
-          'התנתקת מהחשבון. העותק המקומי של הנתונים נשאר זמין במכשיר.',
-        );
-        setState(() {});
-      });
+    await CloudSyncService.signOut();
+    _setMessage('התנתקת מהחשבון. העותק המקומי של הנתונים נשאר זמין במכשיר.');
+    setState(() {});
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +277,9 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                     'אין צורך לבצע סנכרון ידני, והעותק המקומי נשאר במכשיר כגיבוי.',
                   ),
                   const SizedBox(height: 8),
-                  Text('במכשיר הזה: ${widget.state.customFoods.length} מזונות אישיים'),
+                  Text(
+                    'במכשיר הזה: ${widget.state.customFoods.length} מזונות אישיים',
+                  ),
                 ],
               ),
             ),
@@ -258,7 +304,9 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               textDirection: TextDirection.ltr,
               decoration: const InputDecoration(
                 labelText: 'סיסמה',
-                helperText: 'לפחות 6 תווים',
+                helperText: CloudGateway.useAppwrite
+                    ? 'בהרשמה חדשה: לפחות 8 תווים'
+                    : 'לפחות 6 תווים',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -275,6 +323,20 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               label: const Text('צור חשבון חדש'),
             ),
           ] else ...[
+            if (CloudGateway.useAppwrite)
+              ValueListenableBuilder<List<FoodSyncConflict>>(
+                valueListenable: CloudSyncService.foodConflicts,
+                builder: (context, conflicts, _) => Column(
+                  children: [
+                    for (final conflict in conflicts)
+                      if (conflict.ownerId == user.id)
+                        FoodConflictCard(
+                          conflict: conflict,
+                          onKeepBoth: _busy ? null : () => _keepBoth(conflict),
+                        ),
+                  ],
+                ),
+              ),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.cloud_done_outlined),
