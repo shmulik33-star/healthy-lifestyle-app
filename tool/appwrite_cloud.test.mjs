@@ -43,6 +43,22 @@ test('production, missing configuration and cross-origin requests fail before up
   assert.equal((await handleCloud(request('state',{}, {origin:'https://attacker.test'}),env,'state',never)).status,403);
   assert.equal((await handleCloud(request('session',undefined,{'sec-fetch-site':'cross-site'}),env,'session',never)).status,403);
 });
+
+test('approved production origin has host-scoped sessions and rejects Preview origin',async()=>{
+  const production='https://healthy-lifestyle-app.pages.dev';
+  const configured={...env,APPWRITE_ORIGIN:production};
+  let identities=0;
+  const live=new Request(production+'/api/cloud/session',{headers:{cookie:'__Host-fit-appwrite=session-secret'}});
+  const result=await handleCloud(live,configured,'session',async(url,options)=>{
+    identities++;assert.ok(url.endsWith('/account'));
+    assert.equal(options.headers['X-Appwrite-Key'],undefined);
+    return json({$id:'owner'});
+  });
+  assert.equal(result.status,200);assert.equal(identities,1);
+  assert.equal((await handleCloud(request('session'),configured,'session',()=>assert.fail())).status,503);
+  const cross=new Request(production+'/api/cloud/state',{method:'POST',headers:{origin,'content-type':'application/json'},body:'{}'});
+  assert.equal((await handleCloud(cross,configured,'state',()=>assert.fail())).status,403);
+});
 test('identity verification uses session only; server ownership ignores supplied user id',async()=>{
   let calls=0;
   const fetcher=async(url,options)=>{

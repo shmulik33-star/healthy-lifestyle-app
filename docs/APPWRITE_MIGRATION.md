@@ -368,3 +368,38 @@ of Appwrite transaction concurrency under real simultaneous devices.
 Deployment CI and post-deploy verification are pending for this checkpoint.
 Before cutover: live isolated-account/transaction QA, final source catch-up with
 recovery export, expiring credential review, rollback plan and explicit approval.
+
+### Approved production cutover preparation (2026-10-08)
+
+User explicitly approved configuring the existing server key/binding in Healthy
+Cloudflare Production and merging/deploying the migration. Supabase stays active
+for recovery; Architect/Baseline remain out of scope. User reports Preview-only
+use since migration testing began.
+
+Six live API QA groups passed on isolated fake accounts: new-account emptiness,
+state revision CAS race, daily max/max/OR race, food content CAS and keep-both
+server writes, cross-owner gateway rejection and direct row permissions.
+Meaningful direct writes return 401/user_unauthorized on all three tables and
+full before/after rows are equal. Earlier no-op write expectations and raw JSON
+key-order comparison were harness errors, not evidence of write access. All test
+sessions revoked. Eight fake QA accounts remain for inspection; no deletions.
+This proves live server paths, not a deployed Flutter conflict-dialog journey.
+
+ACL-restricted application-data export: 14 state / 61 daily / 9 food rows plus
+Auth IDs. Separate complete Appwrite row snapshots saved before catch-up.
+Source state and food fingerprints still equal the original migration snapshot;
+all source daily values are already covered by target maxima. Catch-up verification
+required zero remote writes and preserved Preview state/food rows. Exports are
+local private artifacts, not Git files and not a full Supabase database backup.
+
+Production is now an explicit CI gate (APPWRITE_PRODUCTION_READY). Without it,
+main deployment fails instead of silently publishing a mismatched backend.
+Approved production uses its own strict origin and host-only cookie; existing
+private limiter service is reused. Offline shell production-host support requires
+an explicit --production build flag; Preview assets still refuse production.
+Static/API cache isolation and waiting-update safety remain unchanged.
+
+Production secret installation, final CI/merge/deploy and user production login
+verification still pending at this source checkpoint. Existing runtime key has
+short expiry (console shows five days); renew/rotate before it expires. Do not
+pause Supabase until production login/data/sync have been verified.

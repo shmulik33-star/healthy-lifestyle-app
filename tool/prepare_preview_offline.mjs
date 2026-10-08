@@ -11,7 +11,7 @@ export function isStaticAsset(path) {
     'canvaskit/canvaskit.js','canvaskit/canvaskit.wasm'].includes(path) ||
     /^(assets|icons)\//.test(path);
 }
-export async function preparePreviewOffline(directory) {
+export async function preparePreviewOffline(directory,{production=false}={}) {
   const root=resolve(directory);
   const bootstrapPath=join(root,'flutter_bootstrap.js');
   const bootstrap=await readFile(bootstrapPath,'utf8');
@@ -30,7 +30,7 @@ export async function preparePreviewOffline(directory) {
   const preparedOffset=bootstrap.indexOf('(function startPreviewOffline(');
   const offset=preparedOffset>=0?preparedOffset:bootstrap.lastIndexOf(marker);
   if(offset<0 || (preparedOffset<0 && bootstrap.indexOf(marker)!==offset)) throw new Error('Unexpected Flutter bootstrap shape');
-  await writeFile(bootstrapPath,bootstrap.slice(0,offset)+`(${startPreviewOffline.toString()})();\n`);
+  await writeFile(bootstrapPath,bootstrap.slice(0,offset)+`(${startPreviewOffline.toString()})(${JSON.stringify(production)});\n`);
   const indexPath=join(root,'index.html');
   const index=await readFile(indexPath,'utf8');
   await writeFile(indexPath,index.replace(/\s*<link\b[^>]*href="https:\/\/fonts\.(?:googleapis|gstatic)\.com[^>]*>/g,''));
@@ -58,10 +58,10 @@ export async function preparePreviewOffline(directory) {
   }
   const version=createHash('sha256').update(previewOfflineWorker.toString()).update(JSON.stringify(assets)).digest('hex').slice(0,24);
   await writeFile(join(root,'flutter_service_worker.js'),
-    `// Preview-only static application cache. Never caches API traffic.\n(${previewOfflineWorker.toString()})(self,${JSON.stringify({version,assets})});\n`);
+    `// Verified static application cache. Never caches API traffic.\n(${previewOfflineWorker.toString()})(self,${JSON.stringify({version,assets,production})});\n`);
   await writeFile(join(root,'offline-build.json'),JSON.stringify({version,assetCount:assets.length,bytes})+'\n');
   return {version,assetCount:assets.length,bytes};
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
-  console.log(JSON.stringify(await preparePreviewOffline('build/web')));
+  console.log(JSON.stringify(await preparePreviewOffline('build/web',{production:process.argv.includes('--production')})));
 }

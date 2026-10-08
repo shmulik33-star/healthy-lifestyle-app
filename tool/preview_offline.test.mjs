@@ -8,7 +8,7 @@ import {createServer} from 'node:http';
 import {previewOfflineWorker} from './preview_offline_worker.mjs';
 import {isStaticAsset,preparePreviewOffline} from './prepare_preview_offline.mjs';
 
-function harness({host='preview.healthy-lifestyle-app.pages.dev',failPath,fetchAsset}={}) {
+function harness({host='preview.healthy-lifestyle-app.pages.dev',production=false,failPath,fetchAsset}={}) {
   const listeners={};
   const stores=new Map([['unrelated-user-cache',new Map()]]);
   const downloads=[];
@@ -26,7 +26,7 @@ function harness({host='preview.healthy-lifestyle-app.pages.dev',failPath,fetchA
   };
   const scope={location:{hostname:host,origin:'https://'+host},
     clients:{claim:async()=>claims++},addEventListener:(name,listener)=>listeners[name]=listener};
-  const build={version:'version-a',assets:[
+  const build={version:'version-a',production,assets:[
     {path:'index.html',integrity:'sha256-a'},
     {path:'main.dart.js',integrity:'sha256-b'},
     {path:'assets/FontManifest.json',integrity:'sha256-c'},
@@ -137,6 +137,18 @@ test('worker refuses installation on production hostname',async()=>{
   const h=harness({host:'healthy-lifestyle-app.pages.dev'});
   await assert.rejects(h.lifecycle('install'),/Preview-only/);
   assert.equal(h.downloads.length,0);
+});
+
+test('explicit production build starts offline without caching API or unknown origins',async()=>{
+  const h=harness({host:'healthy-lifestyle-app.pages.dev',production:true});
+  await h.lifecycle('install');
+  await h.lifecycle('activate');
+  h.setOffline();
+  assert.equal(await (await h.request('/',{mode:'navigate'})).text(),'/');
+  assert.equal(h.request('/api/cloud/state'),undefined);
+  assert.equal(h.request('https://other.example/main.dart.js'),undefined);
+  const unknown=harness({host:'architect-ai-cloud-pilot.netlify.app',production:true});
+  await assert.rejects(unknown.lifecycle('install'),/Preview-only/);
 });
 
 test('Preview preparation uses local renderer, removes external stylesheet and hashes static files',async()=>{

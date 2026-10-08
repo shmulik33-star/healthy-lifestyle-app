@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 
 const preview='https://preview.healthy-lifestyle-app.pages.dev';
 const production='https://healthy-lifestyle-app.pages.dev';
+const productionOnly=process.argv.includes('--production');
+const productionEnabled=productionOnly||process.env.APPWRITE_PRODUCTION_READY==='true';
 async function expect(origin,action,status,error,options={}) {
   let result;
   for(let attempt=0;attempt<12;attempt++) {
@@ -27,6 +29,17 @@ async function expect(origin,action,status,error,options={}) {
 // Current production can predate the adapter and return the static SPA fallback.
 // A deployed adapter must instead explicitly fail closed. Never accept a live
 // JSON session response here, even if it says no user is signed in.
+if(productionEnabled) {
+  await expect(production,'session',401,'authentication_required');
+  await expect(production,'sign-in',403,'forbidden',{
+    method:'POST',headers:{origin:'https://example.invalid','content-type':'application/json'},body:'{}',
+  });
+  await expect(production,'sign-in',400,'invalid_input',{
+    method:'POST',headers:{origin:production,'content-type':'application/json'},body:'{}',
+  });
+  console.log('Approved production adapter and private limiter configured.');
+  if(productionOnly) process.exit(0);
+} else {
 const prod=await fetch(`${production}/api/cloud/session`,{
   signal:AbortSignal.timeout(20000),redirect:'error',
 });
@@ -40,6 +53,7 @@ if(prod.status===503) {
   assert.equal(prod.status,404);
 }
 console.log('Production Appwrite session route is absent or explicitly disabled.');
+}
 await expect(preview,'session',401,'authentication_required');
 await expect(preview,'sign-in',403,'forbidden',{
   method:'POST',headers:{origin:'https://example.invalid','content-type':'application/json'},body:'{}',

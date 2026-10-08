@@ -1,6 +1,8 @@
 // Serialized after Flutter's generated loader/buildConfig, in Preview only.
-export function startPreviewOffline() {
-  if(['preview.healthy-lifestyle-app.pages.dev','localhost','127.0.0.1'].includes(location.hostname) &&
+export function startPreviewOffline(production=false) {
+  const allowedHosts=['preview.healthy-lifestyle-app.pages.dev','localhost','127.0.0.1'];
+  if(production===true) allowedHosts.push('healthy-lifestyle-app.pages.dev');
+  if(allowedHosts.includes(location.hostname) &&
       'serviceWorker' in navigator) {
     const status=document.createElement('div');
     status.setAttribute('role','status');

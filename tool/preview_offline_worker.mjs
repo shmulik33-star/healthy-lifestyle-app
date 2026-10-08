@@ -4,6 +4,7 @@ export function previewOfflineWorker(scope, build) {
   const prefix='fit-preview-shell-';
   const cacheName=prefix+build.version;
   const allowedHosts=['preview.healthy-lifestyle-app.pages.dev','localhost','127.0.0.1'];
+  if(build.production===true) allowedHosts.push('healthy-lifestyle-app.pages.dev');
   const assets=new Map(build.assets.map(asset=>['/'+asset.path,asset]));
   const allowed=()=>allowedHosts.includes(scope.location.hostname);
   function withoutRedirect(response) {
