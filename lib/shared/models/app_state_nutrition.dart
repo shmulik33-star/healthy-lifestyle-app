@@ -217,13 +217,15 @@ void _nutritionAddCustomFood(AppState state, FoodItem food) {
 void _nutritionApplyRemoteCustomFood(
   AppState state,
   FoodItem food,
-  DateTime remoteUpdatedAt,
-) {
+  DateTime remoteUpdatedAt, {
+  bool matchByName = true,
+}) {
   final replacedIds = state.customFoods
       .where(
         (existing) =>
             existing.id == food.id ||
-            existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
+            (matchByName &&
+                existing.name.trim().toLowerCase() == food.name.trim().toLowerCase()),
       )
       .map((existing) => existing.id)
       .toSet();
@@ -231,7 +233,8 @@ void _nutritionApplyRemoteCustomFood(
   state.customFoods.removeWhere(
     (existing) =>
         existing.id == food.id ||
-        existing.name.trim().toLowerCase() == food.name.trim().toLowerCase(),
+        (matchByName &&
+            existing.name.trim().toLowerCase() == food.name.trim().toLowerCase()),
   );
   state.customFoods.add(food);
   state.customFoodUpdatedAt[food.id] = remoteUpdatedAt;

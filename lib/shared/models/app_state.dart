@@ -615,8 +615,21 @@ class AppState extends ChangeNotifier {
     return state;
   }
 
-  Future<void> _save() async {
+  Future<void> _previewSaveTail = Future<void>.value();
+
+  Future<void> _save() {
     final encoded=jsonEncode(_toJson());
+    if (const String.fromEnvironment('CLOUD_BACKEND', defaultValue: 'supabase') == 'appwrite') {
+      // Preview writes must finish in snapshot order: a pending automatic save
+      // must never overwrite the durable conflict copy with an older snapshot.
+      final operation = _previewSaveTail.then((_) => _persistSnapshot(encoded));
+      _previewSaveTail = operation.catchError((Object _) {});
+      return operation;
+    }
+    return _persistSnapshot(encoded);
+  }
+
+  Future<void> _persistSnapshot(String encoded) async {
     final previous=await AppLocalStorage.readString(_storageKey);
     if(previous!=null && previous!=encoded && _isValidStoredState(previous)){
       await AppLocalStorage.writeString(_backupStorageKey,previous);
@@ -823,10 +836,23 @@ class AppState extends ChangeNotifier {
   void addFood(FoodItem food,double quantity,String unit,{bool fromHome = true}) =>
       _nutritionAddFood(this, food, quantity, unit, fromHome: fromHome);
   void addCustomFood(FoodItem food) => _nutritionAddCustomFood(this, food);
+
+  /// Persist a separately identified conflict copy before authorizing any
+  /// replacement in the cloud. Never match/replace another food by its name.
+  Future<void> preserveFoodConflictCopy(FoodItem food) async {
+    if (customFoods.any((item) => item.id == food.id) ||
+        deletedCustomFoodIds.containsKey(food.id)) {
+      throw StateError('conflict_copy_id_exists');
+    }
+    customFoods.add(food);
+    customFoodUpdatedAt[food.id] = DateTime.now().toUtc();
+    await _save();
+    notifyListeners();
+  }
   void setFoodDisliked(FoodItem food, bool disliked) =>
       _nutritionSetFoodDisliked(this, food, disliked);
-  void applyRemoteCustomFood(FoodItem food, DateTime remoteUpdatedAt) =>
-      _nutritionApplyRemoteCustomFood(this, food, remoteUpdatedAt);
+  void applyRemoteCustomFood(FoodItem food, DateTime remoteUpdatedAt, {bool matchByName = true}) =>
+      _nutritionApplyRemoteCustomFood(this, food, remoteUpdatedAt, matchByName: matchByName);
   void deleteCustomFood(FoodItem food) => _nutritionDeleteCustomFood(this, food);
 
   // IDs are the source of truth whenever they exist. Name matching is only

@@ -46,6 +46,9 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Test Appwrite food conflict resolution without live accounts
+        run: flutter test --dart-define=CLOUD_BACKEND=appwrite test/appwrite_food_resolution_test.dart test/food_sync_conflict_test.dart
+
       - name: Verify Appwrite preview build
         run: flutter build web --release --dart-define=CLOUD_BACKEND=appwrite
 

@@ -330,3 +330,39 @@ both online and offline navigation and previously cached redirected responses.
 The deployment smoke check also requires a non-redirected canonical root and
 the updated worker. No skipWaiting, user-data clearing or production changes.
 Phone cold reopening and browser recovery must still be rechecked after deploy.
+
+### User-reported offline pass and conflict-resolution QA (2026-10-08)
+
+After redirect fix f3aee02 the user confirmed recovery, Android offline cold
+reopening with existing data, and a full offline-water-add/reopen/reconnect/sync/
+refresh sequence without loss or duplication. These are manual user reports.
+The user cannot currently provide two devices for additional concurrency QA.
+
+Added Preview/Appwrite-only explicit keep-both resolution in Account and Sync:
+
+- Review both food versions (macros, units, category, kosher selection, barcode)
+  and confirm in a nested-navigator-safe dialog. Doing nothing preserves both.
+- Persist a new randomly identified, uniquely named cloud-version copy locally
+  before granting any overwrite consent. Original ID and meal references stay.
+- Consent binds owner, exact reviewed local and remote content, and the preserved
+  copy. Normal sync re-reads the server; changed versions/owners/copy invalidate
+  consent. Existing staged-transaction CAS remains the final write guard.
+- Upload preserved cloud copies before original IDs. Failures leave local copies
+  durable; consent is in memory only and is re-established after restart.
+- Serialize Appwrite food sync/resolution and Preview local snapshot writes to
+  prevent an older pending save from overwriting a freshly preserved copy.
+- Appwrite downloads match foods by ID only, preserving same-name distinct IDs.
+  The default Supabase path retains its existing behavior. No source database,
+  permissions, credentials or Production settings changed by this step.
+
+Verification: 37 Node tests; standard Flutter suite 216 passing with 4
+Appwrite-specific skips; dedicated Appwrite mode 9 passing tests (actual sync
+service using mocked same-origin HTTP, plus model/persistence/widget cases).
+Additional mocked server tests cover expired/stale sessions on every data action,
+cross-owner rows on later pagination, and daily transaction retry preserving
+concurrent maxima. These tests are NOT a live two-account isolation audit or proof
+of Appwrite transaction concurrency under real simultaneous devices.
+
+Deployment CI and post-deploy verification are pending for this checkpoint.
+Before cutover: live isolated-account/transaction QA, final source catch-up with
+recovery export, expiring credential review, rollback plan and explicit approval.

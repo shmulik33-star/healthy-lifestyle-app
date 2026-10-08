@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'cloud_gateway.dart';
 import 'food_sync_decision.dart';
+import 'food_sync_conflict.dart';
 
 import '../../shared/models/app_state.dart';
 import '../../shared/models/food.dart';
@@ -54,6 +56,59 @@ class CloudSyncService {
   static CloudUser? get currentUser => CloudGateway.currentUser;
   static bool get isSignedIn => currentUser != null;
 
+  static final foodConflicts = ValueNotifier<List<FoodSyncConflict>>(const []);
+  static final _foodConsents = <String, FoodSyncConsent>{};
+  static Future<void> _foodSyncTail = Future<void>.value();
+
+  static Future<T> _withFoodLock<T>(Future<T> Function() action) async {
+    final previous = _foodSyncTail;
+    final completed = Completer<void>();
+    _foodSyncTail = completed.future;
+    try {
+      await previous;
+      return await action();
+    } finally {
+      completed.complete();
+    }
+  }
+
+  static Future<void> keepBothFoodVersions(
+    AppState state,
+    FoodSyncConflict conflict,
+  ) => _withFoodLock(() async {
+    if (!CloudGateway.useAppwrite) {
+      throw const CloudGatewayException('cloud_unavailable');
+    }
+    FoodItem? local() => state.customFoods
+        .where((food) => food.id == conflict.local.id)
+        .firstOrNull;
+    if (currentUser?.id != conflict.ownerId ||
+        local() == null ||
+        foodContentKey(local()!) != conflict.localKey ||
+        state.deletedCustomFoodIds.containsKey(conflict.local.id)) {
+      throw const CloudGatewayException('food_conflict_changed');
+    }
+    final random = Random.secure();
+    final id =
+        'conflict_${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+    final copy = conflict.remoteCopy(id, state.customFoods);
+    _applyingRemoteState = true;
+    try {
+      await state.preserveFoodConflictCopy(copy);
+    } finally {
+      _applyingRemoteState = false;
+    }
+    // A session or local edit may have changed during the disk write.
+    if (currentUser?.id != conflict.ownerId ||
+        local() == null ||
+        foodContentKey(local()!) != conflict.localKey) {
+      throw const CloudGatewayException('food_conflict_changed');
+    }
+    _foodConsents[conflict.local.id] = FoodSyncConsent(conflict, copy);
+    // The next normal sync re-reads the server and validates this exact pair
+    // and the preserved copy before using the existing server-side CAS.
+  });
+
   static const _syncMetaKey = CloudGateway.useAppwrite
       ? 'appwrite_cloud_sync_meta_v1'
       : 'cloud_sync_meta_v2';
@@ -103,6 +158,8 @@ class CloudSyncService {
 
     _authSubscription = CloudGateway.authChanges.listen((user) {
       final userId = user?.id;
+      _foodConsents.clear();
+      foodConflicts.value = const [];
       if (userId == null) {
         _debounceTimer?.cancel();
         _automaticSyncPending = false;
@@ -226,6 +283,9 @@ class CloudSyncService {
     // which custom foods to download below — otherwise a food deleted on
     // device A could still be re-downloaded by device B for one more cycle.
     final stateResult = await _syncAppState(state, user.id);
+    if (CloudGateway.useAppwrite && currentUser?.id != user.id) {
+      throw const CloudGatewayException('authentication_required');
+    }
     final foods = await syncCustomFoods(state);
 
     return CloudSyncResult(
@@ -720,7 +780,14 @@ class CloudSyncService {
   /// times). Previously an id present on both sides was never touched again
   /// after its first sync, so an edit on one device silently never reached
   /// the other. See PROJECT_BRIEF.md section 6.3.
-  static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) async {
+  /// Appwrite instead uses common content baselines and explicit keep-both
+  /// consent for concurrent edits; device timestamps do not choose a winner.
+  static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) =>
+      CloudGateway.useAppwrite
+      ? _withFoodLock(() => _syncCustomFoods(state))
+      : _syncCustomFoods(state);
+
+  static Future<CustomFoodSyncResult> _syncCustomFoods(AppState state) async {
     final user = currentUser;
     if (user == null) {
       throw StateError('cloud_sync_requires_sign_in');
@@ -774,12 +841,45 @@ class CloudSyncService {
               : _stateFingerprint(cloudById[id]!.toJson()),
           baseline: baselines[id],
         );
-      }
-      if (decisions.values.contains(FoodSyncDecision.conflict)) {
-        throw const CloudGatewayException('food_conflict');
+        final consent = _foodConsents[id];
+        if (decisions[id] == FoodSyncDecision.conflict &&
+            consent != null &&
+            consent.permits(
+              user.id,
+              localById[id],
+              cloudById[id],
+              localById[consent.copy.id],
+            )) {
+          decisions[id] = FoodSyncDecision.upload;
+        }
       }
       if (currentUser?.id != user.id) {
         throw const CloudGatewayException('authentication_required');
+      }
+      // Do not download over an edit made while the remote read/metadata load
+      // was in flight. Retry from a new snapshot instead.
+      final nowById = {for (final food in state.customFoods) food.id: food};
+      if (nowById.length != localById.length ||
+          localById.entries.any(
+            (entry) =>
+                nowById[entry.key] == null ||
+                foodContentKey(nowById[entry.key]!) !=
+                    foodContentKey(entry.value),
+          ) ||
+          !setEquals(deletedIds, state.deletedCustomFoodIds.keys.toSet())) {
+        throw const CloudGatewayException('food_conflict_changed');
+      }
+      foodConflicts.value = List.unmodifiable([
+        for (final entry in decisions.entries)
+          if (entry.value == FoodSyncDecision.conflict)
+            FoodSyncConflict(
+              ownerId: user.id,
+              local: localById[entry.key]!,
+              remote: cloudById[entry.key]!,
+            ),
+      ]);
+      if (foodConflicts.value.isNotEmpty) {
+        throw const CloudGatewayException('food_conflict');
       }
     }
     var downloaded = 0;
@@ -798,6 +898,7 @@ class CloudSyncService {
           state.applyRemoteCustomFood(
             entry.value,
             remoteTs ?? DateTime.now().toUtc(),
+            matchByName: !CloudGateway.useAppwrite,
           );
           downloaded++;
           continue;
@@ -817,6 +918,7 @@ class CloudSyncService {
           state.applyRemoteCustomFood(
             entry.value,
             remoteTs ?? DateTime.now().toUtc(),
+            matchByName: !CloudGateway.useAppwrite,
           );
           edited++;
         }
@@ -857,6 +959,18 @@ class CloudSyncService {
     }
 
     if (uploads.isNotEmpty) {
+      if (CloudGateway.useAppwrite) {
+        // Preserve reviewed cloud versions on the server BEFORE overwriting
+        // originals. Each row is CAS-committed separately by the existing API.
+        final copyIds = _foodConsents.values
+            .map((consent) => consent.copy.id)
+            .toSet();
+        uploads.sort(
+          (a, b) => (copyIds.contains(a['food_id']) ? 0 : 1).compareTo(
+            copyIds.contains(b['food_id']) ? 0 : 1,
+          ),
+        );
+      }
       await CloudGateway.writeFoods(uploads);
     }
 
@@ -877,6 +991,9 @@ class CloudSyncService {
         baselines.remove(id);
       }
       await AppLocalStorage.writeString(foodMetaKey, jsonEncode(baselines));
+      for (final id in decisions.keys) {
+        _foodConsents.remove(id);
+      }
     }
 
     // Propagate local deletions to the cloud row itself, so the table

@@ -140,3 +140,65 @@ test('upstream failures never expose credentials or raw response bodies',async()
   assert.equal(result.status,503);
   assert.deepEqual(await result.json(),{error:'cloud_unavailable'});
 });
+
+test('expired sessions and stale account headers block every data action before row access',async()=>{
+  for(const action of ['state','foods','daily','delete-foods']) {
+    for(const expired of [true,false]) {
+      let identities=0;
+      const result=await handleCloud(request(action,{}, {'x-fit-expected-user':'previous-owner'}),env,action,
+        async(url,options)=>{
+          assert.ok(url.endsWith('/account'),'No row or transaction access allowed');
+          identities++;
+          assert.equal(options.headers['X-Appwrite-Key'],undefined);
+          return expired?new Response('{}',{status:401}):json({$id:'owner'});
+        });
+      assert.equal(result.status,401,action);
+      assert.equal(identities,1);
+      assert.deepEqual(await result.json(),{error:'authentication_required'});
+    }
+  }
+});
+
+test('all data lists are owner scoped and reject foreign rows on a later page',async()=>{
+  for(const table of ['user_app_state','user_daily_progress','user_custom_foods']) {
+    let pages=0;
+    const repo=createRepository(async path=>{
+      const queries=new URL('https://internal'+path).searchParams.getAll('queries[]').map(JSON.parse);
+      assert.deepEqual(queries[0],{method:'equal',attribute:'user_id',values:['owner']});
+      pages++;
+      return pages===1?{total:101,rows:Array.from({length:100},(_,index)=>({$id:String(index),user_id:'owner'}))}
+        :{total:101,rows:[{$id:'foreign',user_id:'other'}]};
+    },'owner');
+    await assert.rejects(repo.list(table),error=>error.code==='cloud_unavailable');
+    assert.equal(pages,2);
+  }
+});
+
+test('daily storage conflict retries against the newer staged snapshot, preserving both maxima',async()=>{
+  let attempts=0;
+  let rolledBack=0;
+  let staged;
+  let current={$id:'row',user_id:'owner',water_cups:4,steps:100,workout_completed:false};
+  const repo=createRepository(async(path,method='GET',body)=>{
+    if(path==='/tablesdb/transactions') return {$id:'tx'+(++attempts)};
+    if(path.startsWith('/tablesdb/transactions/')) {
+      if(body.rollback) {rolledBack++;return {};}
+      if(attempts===1) {
+        current={...current,water_cups:9,workout_completed:true};
+        throw new CloudError('storage_conflict',409);
+      }
+      current=staged;return {status:'committed'};
+    }
+    if(method==='GET' && path.includes('?transactionId=')) return {...current};
+    if(method==='GET') return {total:1,rows:[{...current}]};
+    if(body.data.water_cups!==undefined) staged={...current,...body.data};
+    return staged??current;
+  },'owner');
+  const result=await repo.mutate('user_daily_progress',['day_key','2026-10-08'],remote=>
+    mergeDaily(remote,{day_key:'2026-10-08',water_cups:6,steps:300,workout_completed:false}));
+  assert.equal(attempts,2);
+  assert.equal(rolledBack,1);
+  assert.equal(result.water_cups,9);
+  assert.equal(result.steps,300);
+  assert.equal(result.workout_completed,true);
+});

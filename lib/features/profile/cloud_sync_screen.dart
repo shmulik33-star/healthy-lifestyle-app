@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../shared/models/app_state.dart';
 import 'cloud_sync_service.dart';
 import 'cloud_gateway.dart';
+import 'food_sync_conflict.dart';
+import 'food_conflict_card.dart';
 import 'profile_goals_store.dart';
 
 class CloudSyncScreen extends StatefulWidget {
@@ -207,6 +209,35 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
 
   Future<void> _syncNow() => _runBusy(() => _sync());
 
+  Future<void> _keepBoth(FoodSyncConflict conflict) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('לשמור את שתי הגרסאות?'),
+        content: const Text(
+          'גרסת הענן תישמר קודם כפריט נפרד במכשיר. '
+          'לאחר מכן ננסה לסנכרן את שתי הגרסאות. אם המזון השתנה שוב, נבקש בדיקה נוספת.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('ביטול'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('שמור את שתיהן'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runBusy(() async {
+      await CloudSyncService.keepBothFoodVersions(widget.state, conflict);
+      await _sync();
+    });
+  }
+
   Future<void> _signOut() => _runBusy(() async {
     await CloudSyncService.signOut();
     _setMessage('התנתקת מהחשבון. העותק המקומי של הנתונים נשאר זמין במכשיר.');
@@ -292,6 +323,20 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               label: const Text('צור חשבון חדש'),
             ),
           ] else ...[
+            if (CloudGateway.useAppwrite)
+              ValueListenableBuilder<List<FoodSyncConflict>>(
+                valueListenable: CloudSyncService.foodConflicts,
+                builder: (context, conflicts, _) => Column(
+                  children: [
+                    for (final conflict in conflicts)
+                      if (conflict.ownerId == user.id)
+                        FoodConflictCard(
+                          conflict: conflict,
+                          onKeepBoth: _busy ? null : () => _keepBoth(conflict),
+                        ),
+                  ],
+                ),
+              ),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.cloud_done_outlined),
