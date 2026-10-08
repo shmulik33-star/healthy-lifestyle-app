@@ -48,6 +48,13 @@ void main() {
       consent.permits('owner', local, remote, food('נערך', id: 'copy')),
       isFalse,
     );
+    copy.units['מנה'] = 250;
+    expect(
+      consent.permits('owner', local, remote, copy),
+      isFalse,
+      reason:
+          'Consent must retain reviewed bytes even when a mutable unit map changes',
+    );
   });
 
   test('display snapshots detach mutable units and canonicalize key order', () {

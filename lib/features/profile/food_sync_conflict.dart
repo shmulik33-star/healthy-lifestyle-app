@@ -53,9 +53,10 @@ class FoodSyncConflict {
 }
 
 class FoodSyncConsent {
-  const FoodSyncConsent(this.conflict, this.copy);
+  FoodSyncConsent(this.conflict, this.copy) : copyKey = foodContentKey(copy);
   final FoodSyncConflict conflict;
   final FoodItem copy;
+  final String copyKey;
 
   bool permits(
     String owner,
@@ -65,5 +66,5 @@ class FoodSyncConsent {
   ) =>
       conflict.matches(owner, local, remote) &&
       preservedCopy != null &&
-      foodContentKey(preservedCopy) == foodContentKey(copy);
+      foodContentKey(preservedCopy) == copyKey;
 }
