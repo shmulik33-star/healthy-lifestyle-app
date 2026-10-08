@@ -351,12 +351,14 @@ Added Preview/Appwrite-only explicit keep-both resolution in Account and Sync:
   durable; consent is in memory only and is re-established after restart.
 - Serialize Appwrite food sync/resolution and Preview local snapshot writes to
   prevent an older pending save from overwriting a freshly preserved copy.
+  A queued food sync captures its requesting owner and aborts after a switch;
+  it must not read or upload that old snapshot under a newly signed-in account.
 - Appwrite downloads match foods by ID only, preserving same-name distinct IDs.
   The default Supabase path retains its existing behavior. No source database,
   permissions, credentials or Production settings changed by this step.
 
-Verification: 37 Node tests; standard Flutter suite 216 passing with 4
-Appwrite-specific skips; dedicated Appwrite mode 9 passing tests (actual sync
+Verification: 37 Node tests; standard Flutter suite 216 passing before the final
+additional Appwrite-only queued-owner test; dedicated Appwrite mode 10 passing tests (actual sync
 service using mocked same-origin HTTP, plus model/persistence/widget cases).
 Additional mocked server tests cover expired/stale sessions on every data action,
 cross-owner rows on later pagination, and daily transaction retry preserving

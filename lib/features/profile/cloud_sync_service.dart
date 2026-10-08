@@ -782,10 +782,18 @@ class CloudSyncService {
   /// the other. See PROJECT_BRIEF.md section 6.3.
   /// Appwrite instead uses common content baselines and explicit keep-both
   /// consent for concurrent edits; device timestamps do not choose a winner.
-  static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) =>
-      CloudGateway.useAppwrite
-      ? _withFoodLock(() => _syncCustomFoods(state))
-      : _syncCustomFoods(state);
+  static Future<CustomFoodSyncResult> syncCustomFoods(AppState state) {
+    if (!CloudGateway.useAppwrite) return _syncCustomFoods(state);
+    final requestedOwner = currentUser?.id;
+    return _withFoodLock(() {
+      // A queued request belongs to the account that requested it, not to a
+      // different account that happens to be signed in when the lock opens.
+      if (requestedOwner == null || currentUser?.id != requestedOwner) {
+        throw const CloudGatewayException('authentication_required');
+      }
+      return _syncCustomFoods(state);
+    });
+  }
 
   static Future<CustomFoodSyncResult> _syncCustomFoods(AppState state) async {
     final user = currentUser;

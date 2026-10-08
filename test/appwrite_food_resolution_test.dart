@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -30,6 +31,62 @@ final isFoodConflict = isA<CloudGatewayException>().having(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   tearDown(CloudSyncService.stopAutomaticSync);
+
+  test(
+    'queued food sync cannot migrate to a different signed-in owner',
+    () async {
+      final started = Completer<void>();
+      final release = Completer<void>();
+      var owner = 'owner';
+      var reads = 0;
+      final state = AppState()..customFoods.add(food('מקומי'));
+      final authError = isA<CloudGatewayException>().having(
+        (error) => error.code,
+        'code',
+        'authentication_required',
+      );
+      await http.runWithClient(
+        () async {
+          await CloudGateway.signIn('test@example.test', 'fake-password');
+          final first = expectLater(
+            CloudSyncService.syncCustomFoods(state),
+            throwsA(authError),
+          );
+          await started.future;
+          final queued = expectLater(
+            CloudSyncService.syncCustomFoods(state),
+            throwsA(authError),
+          );
+          owner = 'other';
+          await CloudGateway.signIn('other@example.test', 'fake-password');
+          release.complete();
+          await Future.wait([first, queued]);
+          expect(
+            reads,
+            1,
+            reason:
+                'Queued old-account request must not even read new account rows',
+          );
+        },
+        () => MockClient((request) async {
+          if (request.url.path.endsWith('sign-in')) {
+            return http.Response(
+              jsonEncode({
+                'user': {'id': owner},
+              }),
+              200,
+            );
+          }
+          expect(request.method, 'GET');
+          reads++;
+          started.complete();
+          await release.future;
+          return http.Response('{"rows":[]}', 200);
+        }),
+      );
+    },
+    skip: !CloudGateway.useAppwrite,
+  );
 
   test(
     'edit during remote read is retained without upload or download overwrite',
