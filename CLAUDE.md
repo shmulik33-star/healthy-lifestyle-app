@@ -5,16 +5,27 @@
 > (Cowork) ומתעדכן שם בפירוט רב יותר אחרי כל PR — לצלילה עמוקה/היסטוריה מלאה, שם המקום.
 > **אל תמחק היסטוריה מקובץ זה — רק עדכן/הוסף.**
 
-## המצב הנוכחי (מעודכן ל-23.09.2026)
+## המצב הנוכחי (מעודכן ל-15.10.2026)
 
-`main` כולל סנכרון ענן דו-כיווני מלא (Supabase) לכל הישויות: פרופיל, מטרות, ארוחות,
-מזווה, רשימת קניות, משקל, מזונות אישיים, ציוד מותאם אישית. PR #25-#60 כולם ממוזגים
+`main` כולל סנכרון ענן דו-כיווני מלא דרך **Appwrite** לכל הישויות: פרופיל, מטרות,
+ארוחות, מזווה, רשימת קניות, משקל, מזונות אישיים וציוד מותאם אישית. PR #25-#61 כולם ממוזגים
 ומאומתים (CI + בדיקה ידנית של בעל הפרויקט, כולל production). מאמן AI אמיתי (LLM, PR #46) ומאמן כושר
 AI אמיתי (LLM, PR #47) כבר במיזוג — השורה הקודמת כאן ש"שניהם עדיין rule-based" אינה
 מעודכנת יותר. **מ-PR #55 האפליקציה דורשת התחברות/הרשמה בכניסה** (ראה כלל #16). כיוון
 הפיתוח הנוכחי: לחזק את עמוד התזונה (תיעוד מהיר, הצעות AI אמיתיות). `main` הנוכחי
-הוא commit `ae07c9a` (PR #60), והרצת ה-CI האחרונה עליו עברה analyze, tests, build,
-פריסת production ו-smoke test בהצלחה.
+הוא commit `e2968c6` (PR #61), והרצת ה-CI האחרונה עליו עברה analyze, tests, build,
+פריסת production ובדיקות smoke של Appwrite וה-offline shell בהצלחה.
+
+**PR #61 (08.10.2026) — מעבר production מ-Supabase ל-Appwrite:** אתר ה-production
+ב-Cloudflare Pages נבנה עם `CLOUD_BACKEND=appwrite`. Appwrite Cloud בפרנקפורט
+(`https://fra.cloud.appwrite.io/v1`, project `6ac5fccb0004756daef1`) מספק Auth
+ואחסון/סנכרון נתונים דרך מתאם same-origin תחת `/api/cloud/*`; מפתח השרת נשאר
+ב-Cloudflare Secret ואינו נחשף ללקוח. נוספו revision CAS, מיזוג daily מסוג
+max/max/OR, פתרון מפורש של קונפליקט מזון בשיטת keep-both, בידוד בעלים, rate limiter
+פרטי ו-cache סטטי ל-offline שאינו שומר API/נתוני משתמש. Supabase הוא מקור ההגירה
+וה-rollback ההיסטורי בלבד ואינו backend ה-production. קוד ה-Supabase נשאר זמנית
+כמסלול fallback/השוואה; אין להחזיר production אליו בלי החלטה מפורשת ובדיקת נתונים.
+יש לוודא שמפתח ה-runtime של Appwrite חודש/סובב לאחר המפתח קצר-החיים ששימש לחיתוך.
 
 **PR #60 (16.09.2026) — מיתוג FIT HAPPENS ולוגו חדש:** שם התצוגה של האפליקציה
 הוחלף ל-**FIT HAPPENS** והתווסף לוגו קטלבל קורץ במסכי הכניסה, ה-onboarding,
@@ -82,14 +93,18 @@ local-first, כלל #2). **מעבר עיצוב זה הוא לתמה בלבד** �
 
 Flutter Web 3.44.9 (יעד עיקרי), `AppState extends ChangeNotifier` מרכזי (חלוקה ל-part
 files: `app_state_nutrition/_shopping/_fitness/_profile.dart`), SharedPreferences
-(local-first), Supabase (`healthy-lifestyle-app`, ref `efhdmatwcmqqqdjdhfly`,
-publishable key בלבד), Cloudflare Pages+Workers AI (מודל `@cf/google/gemma-4-26b-a4b-it`
-ל-vision: `functions/api/equipment-recognize.ts`, `nutrition-label-recognize.ts`).
+(local-first), Appwrite Cloud (Auth + TablesDB דרך Cloudflare Pages Functions),
+Cloudflare Pages+Workers AI (מודל `@cf/google/gemma-4-26b-a4b-it` ל-vision:
+`functions/api/equipment-recognize.ts`, `nutrition-label-recognize.ts`).
 CI: `.github/workflows/flutter-ci.yml` — analyze→test→build→preview deploy→smoke→
 production deploy (main). Repo: `shmulik33-star/healthy-lifestyle-app`.
 
-**⚠️ יש פרויקט Supabase אחר לגמרי לא קשור: `architect-ai-cloud-pilot`
-(ref `demkxppvmlxcfmhyygap`) — אסור לגעת בו בשום אופן.**
+Supabase `healthy-lifestyle-app` (ref `efhdmatwcmqqqdjdhfly`) הוא מקור ההגירה הישן,
+לא production. **⚠️ פרויקט Supabase `architect-ai-cloud-pilot`
+(ref `demkxppvmlxcfmhyygap`) אינו קשור ואסור לגעת בו.**
+
+`https://mcp.appwrite.io/` הוא חיבור ניהול אופציונלי ל-Codex/ChatGPT באמצעות OAuth;
+הוא אינו תלות runtime ואינו נדרש כדי שהאפליקציה, ה-CI או הסנכרון יעבדו.
 
 ## כללי זהב — לא הצעות, אילוצים מחייבים
 
@@ -116,7 +131,8 @@ production deploy (main). Repo: `shmulik33-star/healthy-lifestyle-app`.
 10. **בדיקות cross-device חובה על ה-stable preview URL**
     (`preview.healthy-lifestyle-app.pages.dev`) — **לא** hash URL (origin נפרד לגמרי,
     שובר session/localStorage).
-11. **Secrets**: לעולם לא Cloudflare API token / Supabase service-role בקוד לקוח.
+11. **Secrets**: לעולם לא Cloudflare API token, `APPWRITE_API_KEY` או Supabase
+    service-role בקוד לקוח. Appwrite session נשמר רק ב-cookie מסוג HttpOnly/Host-only.
 12. **UI**: עברית תקנית, RTL, labels טבעיים (לא טכניים). מטרות = multi-select +
     primary goal, לא single-select.
 13. **תהליך עבודה**: בעל הפרויקט לא מתכנת ידנית. branch→PR→CI ירוק→בדיקה ידנית
@@ -131,21 +147,20 @@ production deploy (main). Repo: `shmulik33-star/healthy-lifestyle-app`.
 15. **ברירות מחדל של `AppState` לעולם לא ייראו כמו נתוני אמת** — שם/גיל/גובה/משקל
     חדשים מתחילים ריקים/0, לא ערך שרירותי שנראה כמו פרופיל אמיתי (ראה PR #51:
     `firstName='שמוליק'` היה ברירת מחדל שרדה מבדיקות, לא onboarding מכוון).
-16. **כניסה לאפליקציה דורשת התחברות/הרשמה** (PR #55): `AppStateGate`
+16. **כניסה לאפליקציה דורשת התחברות/הרשמה** (PR #55, הועבר ל-Appwrite ב-PR #61): `AppStateGate`
     (`lib/app/app_state_gate.dart`) שומר `_signedIn` ומחליף את כל עץ ה-routes
     ב-`AuthGateScreen` (`lib/features/profile/auth_gate_screen.dart`) כל עוד אין
-    session פעיל. `supabase_flutter` שומר session ל-local storage ומשחזר אותו
-    **סינכרונית** בתוך `Supabase.initialize()` (main.dart) — כלומר "השאר מחובר"
-    לא דורש שום קוד נוסף, זה כבר ברירת המחדל של החבילה; רק חיבור ראשון לחשבון
-    דורש רשת. ה-gate מאזין ל-`onAuthStateChange` (בנוסף למאזין הפנימי הקיים כבר
-    ב-`CloudSyncService`) כדי להחליף מסך ברגע שההתחברות/הרשמה מצליחה. **AppState
+    session פעיל. במסלול production של Appwrite, `CloudGateway` משחזר hint מקומי
+    לצורך פתיחה offline ומאמת את ה-session דרך cookie מאובטח כשהרשת זמינה; סוד
+    Appwrite אינו נשמר בלקוח. ה-gate מאזין ל-`CloudGateway.authChanges` כדי להחליף
+    מסך ברגע שההתחברות/הרשמה מצליחה. **AppState
     עדיין נטען תמיד ראשון, ללא תלות באימות** (עקרון local-first, כלל #2) — ה-gate
     חוסם רק איזה מסך מוצג, לא את טעינת הנתונים המקומיים; זרימת האיפוס-לפני-signUp
     (כלל #15/PR #51) עדיין חלה במלואה ב-`AuthGateScreen`.
 
 ## גישות שכבר נכשלו — אל תחזור עליהן
 
-Local-only cross-device (צריך Supabase), בדיקת sync על hash URL, manual sync כברירת
+Local-only cross-device (צריך backend ענן; כיום Appwrite), בדיקת sync על hash URL, manual sync כברירת
 מחדל, nutrition label positional parsing, name-only matching במזווה, סינון בינארי
 לוראייטי בתפריט, פול בגודל כפולה-של-7. פירוט מלא + הסברים בתיק הפרויקט המלא (Cowork).
 

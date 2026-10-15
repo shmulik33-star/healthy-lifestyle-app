@@ -1,4 +1,37 @@
-# Appwrite migration checkpoint — 2026-10-07
+# Appwrite migration — current status and checkpoints
+
+## Current production status — 2026-10-15
+
+The production cutover completed on 2026-10-08 in PR #61, merged as
+`e2968c65139b83a849791c8e1dc99ad2e05a859d`. Production remains hosted at
+`https://healthy-lifestyle-app.pages.dev`, but Auth and application-data sync now
+use Appwrite. The production build is explicitly gated by
+`APPWRITE_PRODUCTION_READY=true` and uses `CLOUD_BACKEND=appwrite`.
+
+The post-merge production CI run `37818267486` passed, including analyze, Flutter
+and Node tests, Appwrite production gateway smoke tests, Cloudflare deployment,
+AI endpoint smoke tests, and offline-shell verification. The target is Appwrite
+Cloud project `6ac5fccb0004756daef1` in Frankfurt. Appwrite server credentials
+remain Cloudflare secrets and must never be committed or exposed to clients.
+
+Supabase project `efhdmatwcmqqqdjdhfly` was the migration source and temporary
+rollback system; it is no longer the production backend. Its retained code path
+is a fallback/comparison path, not the default deployment. Confirm the current
+Supabase project state before any deletion, and never touch the unrelated
+`architect-ai-cloud-pilot` project. The short-lived Appwrite runtime credential
+described in the cutover checkpoint required renewal/rotation; verify that a
+current credential is installed before relying on authenticated production
+operations.
+
+`https://mcp.appwrite.io/` is an optional OAuth-authenticated management bridge
+for AI tools. It is not part of the application runtime and is not required for
+users, CI, deployment, Auth, or sync.
+
+The chronological checkpoints below are retained for audit history. Statements
+such as “production remains on Supabase”, “not merged”, or “cutover pending”
+describe their original point in time and are superseded by the status above.
+
+## Migration checkpoint — 2026-10-07
 
 Target: `healthy-lifestyle-app-clean`, project `6ac5fccb0004756daef1`, Frankfurt
 (`https://fra.cloud.appwrite.io/v1`). Database: `public`.
