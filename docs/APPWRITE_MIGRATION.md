@@ -1,5 +1,18 @@
 # Appwrite migration — current status and checkpoints
 
+## Runtime key renewal — 2026-10-24
+
+The short-lived Appwrite runtime key (`healthy-preview-cloud-runtime`, 7 scopes)
+expired. A replacement with the same scopes and a long expiration was created in
+Appwrite project `6ac5fccb0004756daef1` and installed as the `APPWRITE_API_KEY`
+secret in the Cloudflare Pages Production environment. The Pages project uses
+Direct Upload deployments, so the secret applies only after a new CI deployment
+from `main` (deployments cannot be retried from Cloudflare). This documentation
+PR's merge triggers that deployment. After it completes: run
+`node tool/appwrite_preview_smoke.mjs --production` and verify one real sign-in
+and sync by hand; the smoke test does not exercise the key. Record the new key's
+expiration date privately and renew before it lapses.
+
 ## Current production status — 2026-10-15
 
 The production cutover completed on 2026-10-08 in PR #61, merged as
