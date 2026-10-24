@@ -26,6 +26,7 @@ max/max/OR, פתרון מפורש של קונפליקט מזון בשיטת keep
 וה-rollback ההיסטורי בלבד ואינו backend ה-production. קוד ה-Supabase נשאר זמנית
 כמסלול fallback/השוואה; אין להחזיר production אליו בלי החלטה מפורשת ובדיקת נתונים.
 יש לוודא שמפתח ה-runtime של Appwrite חודש/סובב לאחר המפתח קצר-החיים ששימש לחיתוך.
+**עדכון 24.10.2026:** מפתח ה-runtime פג; נוצר מפתח חדש (אותם 7 scopes, תפוגה ארוכה) והוכנס כ-secret `APPWRITE_API_KEY` ב-Production של Cloudflare Pages. הפרויקט הוא Direct Upload (אי אפשר Retry ב-Cloudflare), ולכן המפתח נכנס לתוקף רק אחרי פריסת CI חדשה מ-`main`. לאחר הפריסה: smoke של production + התחברות וסנכרון ידניים (ה-smoke לא בודק את המפתח).
 
 **PR #60 (16.09.2026) — מיתוג FIT HAPPENS ולוגו חדש:** שם התצוגה של האפליקציה
 הוחלף ל-**FIT HAPPENS** והתווסף לוגו קטלבל קורץ במסכי הכניסה, ה-onboarding,
