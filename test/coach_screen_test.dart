@@ -126,10 +126,10 @@ void main() {
   );
 
   testWidgets(
-    'the speaker mute toggle flips its icon and does not crash the screen '
-    '-- flutter_tts has no real browser speech-synthesis engine in this '
-    'widget-test environment, so speaking a reply is expected to silently '
-    'no-op rather than throw',
+    'speaking replies aloud degrades gracefully when no Hebrew speech-'
+    'synthesis voice is available (as in this widget-test environment, with '
+    'no real browser speech-synthesis engine) -- no speaker toggle, and a '
+    'reply still arrives and displays normally without it',
     (tester) async {
       _useTallTestSurface(tester);
       final state = AppState();
@@ -151,14 +151,11 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+      expect(find.byIcon(Icons.volume_up), findsNothing);
+      expect(find.byIcon(Icons.volume_off), findsNothing);
 
-      await tester.tap(find.byIcon(Icons.volume_up));
-      await tester.pump();
-      expect(find.byIcon(Icons.volume_off), findsOneWidget);
-
-      // With replies-aloud now off, a real reply still arrives normally.
       await tester.tap(find.text('אני רעב'));
       await tester.pumpAndSettle();
       expect(find.textContaining('תשובה חמה מה-AI'), findsOneWidget);

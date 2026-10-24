@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -83,24 +82,137 @@ class _CoachScreenState extends State<CoachScreen> {
   // Voice chat: mic input via the browser's speech-recognition engine
   // (Web Speech API under the hood -- solid on Chrome/Edge, spotty on
   // Safari, absent on Firefox), coach replies read aloud via the browser's
-  // speech-synthesis engine (near-universal support, unlike recognition).
-  // Both degrade silently: if recognition never becomes available the mic
-  // button just never appears, typing keeps working exactly as before.
+  // speech-synthesis engine. Both degrade silently: if recognition never
+  // becomes available the mic button just never appears, typing keeps
+  // working exactly as before; if no Hebrew voice is installed for
+  // speech-synthesis (a real desktop-Chrome gap depending on the OS'
+  // installed voices -- unlike mobile, which normally ships one), the
+  // speaker toggle never appears either, instead of reading Hebrew text out
+  // loud in whatever English voice the browser happened to fall back to.
   final _speech = SpeechToText();
   final _tts = FlutterTts();
   bool _speechAvailable = false;
+  bool _ttsAvailable = false;
   bool _listening = false;
   bool _speakRepliesAloud = true;
+
+  // Chrome only lets a page's *first-ever* speechSynthesis.speak() call
+  // actually produce sound if that call happens synchronously inside a
+  // real user gesture (a click/tap) -- our real replies are always spoken
+  // later, after the network round-trip to the coach, which is never
+  // synchronous with the tap that triggered it. Without this, that first
+  // real speak() call is silently dropped, and because it never succeeds,
+  // the page is never "unlocked" for speech either -- every later reply
+  // stays silent too, for the rest of the page's life. Firing one
+  // near-silent utterance here, synchronously, on every tap of something
+  // that could lead to a spoken reply (mic button, send button, a
+  // quick-question chip) reliably unlocks it the first time one of those
+  // taps actually happens -- there's no reliable way to tell from here
+  // whether a given call was the one that unlocked it, so this just stays
+  // cheap and harmless to repeat rather than trying to track that.
+  void _primeTts() {
+    if (!_ttsAvailable) return;
+    try {
+      _tts.speak(' ');
+    } catch (_) {
+      // Deliberately swallowed -- see _runSafely's comment for why.
+    }
+  }
+
+  // "Voice conversation" mode (the ChatGPT-style back-and-forth the product
+  // owner actually asked for): once turned on with the mic button, each
+  // turn auto-chains into the next -- recognized speech is sent, the reply
+  // is spoken, and listening restarts on its own -- until the user taps the
+  // mic again to stop. `_finalResultHandledThisSession` distinguishes "the
+  // user said something and it's being handled" from "this listen session
+  // ended with nothing recognized" so silence doesn't retrigger the
+  // already-in-flight ask/speak chain a second time; `_consecutiveEmptyListens`
+  // bounds the silent-retry loop so a stuck mic (denied permission, no
+  // speech ever detected) can't restart forever.
+  bool _voiceConversationActive = false;
+  bool _finalResultHandledThisSession = false;
+  int _consecutiveEmptyListens = 0;
+  static const _maxConsecutiveEmptyListens = 3;
+
+  // AppStateScope.of(context) is only safe to call during/after build (via
+  // didChangeDependencies), never eagerly in initState -- but onStatus/
+  // onError below are long-lived callbacks that can fire long after any
+  // particular build, so the state they need is grabbed once here and
+  // reused, instead of calling AppStateScope.of(context) from inside them.
+  late AppState _appState;
 
   @override
   void initState() {
     super.initState();
     _initSpeech();
-    _runSafely(() => _tts.setLanguage('he-IL'));
-    // Without this, speak() resolves as soon as the browser *accepts* the
-    // utterance, not when it finishes -- _speakReply below needs each chunk
-    // to actually finish before starting the next one.
-    _runSafely(() => _tts.awaitSpeakCompletion(true));
+    _initTts();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppStateScope.of(context);
+  }
+
+  // Chrome's `he-IL` Web Speech Synthesis voice isn't installed on every
+  // desktop by default (it normally is on mobile), so setLanguage() alone
+  // can silently succeed while actually leaving the browser on its default
+  // English voice -- which then reads Hebrew text as a handful of mangled
+  // English-sounding words plus whatever digits happen to be in it (digits
+  // read fine in any language). Checking isLanguageAvailable first means a
+  // machine without Hebrew TTS gets the button hidden -- same graceful
+  // degradation as the mic -- instead of garbled speech.
+  Future<void> _initTts() async {
+    try {
+      await _tts.awaitSpeakCompletion(true);
+      // Real-world Hebrew locale tags vary: `he-IL` is current BCP-47, but
+      // some engines still answer to the older ISO code `iw`, and web
+      // implementations are inconsistent about hyphen vs underscore.
+      const candidates = ['he-IL', 'he_IL', 'iw-IL', 'iw_IL'];
+      String? workingLocale;
+      for (final candidate in candidates) {
+        final result = await _tts.isLanguageAvailable(candidate);
+        if (result == true || result == 1) {
+          workingLocale = candidate;
+          break;
+        }
+      }
+      if (workingLocale == null) {
+        if (!mounted) return;
+        setState(() => _ttsAvailable = false);
+        return;
+      }
+      await _tts.setLanguage(workingLocale);
+      // 1.5x normal speed, per feedback -- on web this maps directly to the
+      // Web Speech API's SpeechSynthesisUtterance.rate (1.0 = normal), not
+      // some other platform's normalized 0.0-1.0 range. Best-effort: a
+      // browser/voice that rejects the rate shouldn't break availability,
+      // it just falls back to that voice's own default rate.
+      await _runSafely(() => _tts.setSpeechRate(1.5));
+      // Best-effort: prefer an explicit Hebrew voice over whatever
+      // setLanguage's own matching picked, when the platform exposes voice
+      // selection. Never lets a failure here (e.g. web builds that don't
+      // support setVoice) affect availability -- setLanguage above already
+      // found a genuinely working locale.
+      await _runSafely(() async {
+        final voices = await _tts.getVoices as List<dynamic>?;
+        final hebrewVoice = voices?.firstWhere(
+              (voice) {
+                final locale = (voice is Map ? voice['locale'] : null)?.toString().toLowerCase() ?? '';
+                return locale.startsWith('he') || locale.startsWith('iw');
+              },
+              orElse: () => null,
+            );
+        if (hebrewVoice is Map) {
+          await _tts.setVoice(hebrewVoice.map((k, v) => MapEntry(k.toString(), v.toString())));
+        }
+      });
+      if (!mounted) return;
+      setState(() => _ttsAvailable = true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _ttsAvailable = false);
+    }
   }
 
   // Both plugins reach a real browser API (Web Speech recognition/
@@ -131,6 +243,7 @@ class _CoachScreenState extends State<CoachScreen> {
           if (!mounted) return;
           if (status == 'notListening' || status == 'done') {
             setState(() => _listening = false);
+            _onListenSessionEnded(_appState);
           }
         },
         // Recognition failing (denied mic permission, unsupported browser,
@@ -139,6 +252,7 @@ class _CoachScreenState extends State<CoachScreen> {
         onError: (_) {
           if (!mounted) return;
           setState(() => _listening = false);
+          _onListenSessionEnded(_appState);
         },
       );
       if (!mounted) return;
@@ -157,36 +271,84 @@ class _CoachScreenState extends State<CoachScreen> {
     super.dispose();
   }
 
-  Future<void> _toggleListening(AppState state) async {
-    if (_listening) {
+  // The mic button is a single on/off switch for the whole conversation,
+  // not a per-turn record button: tapping it while active stops everything
+  // (recognition + any reply still being read aloud) instead of only
+  // ending the current listen, since the product owner wants a real
+  // ChatGPT-style back-and-forth -- talk, get a spoken reply, keep talking
+  // -- not "press the mic before every single thing you say".
+  Future<void> _toggleVoiceConversation(AppState state) async {
+    _primeTts();
+    if (_voiceConversationActive) {
+      // Flipped immediately (not inside setState) so the retry logic in
+      // _onListenSessionEnded, which can run while the stop calls below are
+      // still in flight, already sees the conversation as stopped and
+      // doesn't restart listening out from under this.
+      _voiceConversationActive = false;
       await _runSafely(_speech.stop);
+      await _runSafely(_tts.stop);
+      if (!mounted) return;
       setState(() => _listening = false);
       return;
     }
-    // A fresh mic tap always cancels any reply still being read aloud --
+    setState(() {
+      _voiceConversationActive = true;
+      _consecutiveEmptyListens = 0;
+    });
+    await _startListening(state);
+  }
+
+  Future<void> _startListening(AppState state) async {
+    if (!_voiceConversationActive) return;
+    // A fresh listen always cancels any reply still being read aloud --
     // talking over the coach while it's speaking is confusing.
     await _runSafely(_tts.stop);
+    _finalResultHandledThisSession = false;
     setState(() => _listening = true);
     await _runSafely(() => _speech.listen(
-          // BCP-47 format (hyphen, matching flutter_tts's setLanguage below)
-          // -- the browser's SpeechRecognition.lang expects this exact
-          // shape. The underscore form ("he_IL") is invalid here and made
-          // the recognizer silently fall back to the browser's own
-          // language instead of listening for Hebrew.
+          // BCP-47 format (hyphen) -- the browser's SpeechRecognition.lang
+          // expects this exact shape. The underscore form ("he_IL") is
+          // invalid here and made the recognizer silently fall back to the
+          // browser's own language instead of listening for Hebrew.
           listenOptions: SpeechListenOptions(localeId: 'he-IL'),
           onResult: (result) {
             input.text = result.recognizedWords;
             input.selection = TextSelection.collapsed(offset: input.text.length);
             if (result.finalResult) {
-              setState(() => _listening = false);
               final q = input.text.trim();
-              if (q.isNotEmpty) {
-                _ask(state, q);
-                input.clear();
-              }
+              if (q.isEmpty) return;
+              _finalResultHandledThisSession = true;
+              _consecutiveEmptyListens = 0;
+              setState(() => _listening = false);
+              input.clear();
+              _handleVoiceTurn(state, q);
             }
           },
         ));
+  }
+
+  // One full turn of the conversation loop: send what was heard, speak the
+  // reply, then listen again -- unless the user stopped the conversation
+  // (or muted replies aloud) while that was happening.
+  Future<void> _handleVoiceTurn(AppState state, String question) async {
+    await _ask(state, question);
+    if (!mounted || !_voiceConversationActive) return;
+    await _startListening(state);
+  }
+
+  // Recognition ending with nothing recognized (silence, a permission
+  // hiccup) isn't a turn -- _handleVoiceTurn never ran, so nothing will
+  // resume listening on its own. Retry a bounded number of times instead of
+  // just going quiet, but give up (and turn the conversation off) rather
+  // than retry forever against, say, a denied mic permission.
+  void _onListenSessionEnded(AppState state) {
+    if (!_voiceConversationActive || _finalResultHandledThisSession) return;
+    _consecutiveEmptyListens++;
+    if (_consecutiveEmptyListens > _maxConsecutiveEmptyListens) {
+      setState(() => _voiceConversationActive = false);
+      return;
+    }
+    _startListening(state);
   }
 
   @override
@@ -198,14 +360,15 @@ class _CoachScreenState extends State<CoachScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              IconButton(
-                tooltip: _speakRepliesAloud ? 'השתק הקראת תשובות' : 'הקרא תשובות בקול',
-                onPressed: () {
-                  if (_speakRepliesAloud) _runSafely(_tts.stop);
-                  setState(() => _speakRepliesAloud = !_speakRepliesAloud);
-                },
-                icon: Icon(_speakRepliesAloud ? Icons.volume_up : Icons.volume_off),
-              ),
+              if (_ttsAvailable)
+                IconButton(
+                  tooltip: _speakRepliesAloud ? 'השתק הקראת תשובות' : 'הקרא תשובות בקול',
+                  onPressed: () {
+                    if (_speakRepliesAloud) _runSafely(_tts.stop);
+                    setState(() => _speakRepliesAloud = !_speakRepliesAloud);
+                  },
+                  icon: Icon(_speakRepliesAloud ? Icons.volume_up : Icons.volume_off),
+                ),
               Expanded(
                 child: Align(
                   alignment: Alignment.centerRight,
@@ -221,11 +384,11 @@ class _CoachScreenState extends State<CoachScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              ActionChip(label: const Text('אני רעב'), onPressed: () => _ask(state, 'אני רעב, מה כדאי לאכול?')),
-              ActionChip(label: const Text('מה עם האימון?'), onPressed: () => _ask(state, 'מה האימון שלי היום?')),
-              ActionChip(label: const Text('איך נראה השבוע?'), onPressed: () => _ask(state, 'ספר לי על התפריט והקניות לשבוע')),
-              ActionChip(label: const Text('מה היעד שלי?'), onPressed: () => _ask(state, 'מה היעד והמטרה שלי?')),
-              ActionChip(label: const Text('איך ההתקדמות?'), onPressed: () => _ask(state, 'איך ההתקדמות והמשקל שלי?')),
+              ActionChip(label: const Text('אני רעב'), onPressed: () => _askFromButton(state, 'אני רעב, מה כדאי לאכול?')),
+              ActionChip(label: const Text('מה עם האימון?'), onPressed: () => _askFromButton(state, 'מה האימון שלי היום?')),
+              ActionChip(label: const Text('איך נראה השבוע?'), onPressed: () => _askFromButton(state, 'ספר לי על התפריט והקניות לשבוע')),
+              ActionChip(label: const Text('מה היעד שלי?'), onPressed: () => _askFromButton(state, 'מה היעד והמטרה שלי?')),
+              ActionChip(label: const Text('איך ההתקדמות?'), onPressed: () => _askFromButton(state, 'איך ההתקדמות והמשקל שלי?')),
             ],
           ),
         ),
@@ -271,18 +434,28 @@ class _CoachScreenState extends State<CoachScreen> {
                     controller: input,
                     decoration: InputDecoration(
                       border: const OutlineInputBorder(),
-                      hintText: _listening ? 'מקשיב...' : 'כתוב למאמן...',
+                      hintText: _listening
+                          ? 'מקשיב...'
+                          : (_voiceConversationActive ? 'ממתין לתשובה...' : 'כתוב למאמן...'),
                     ),
                   ),
                 ),
                 if (_speechAvailable) ...[
                   const SizedBox(width: 8),
                   IconButton.filled(
-                    onPressed: _asking ? null : () => _toggleListening(state),
+                    // Disabled only for a plain one-off ask already in
+                    // flight (e.g. from an ActionChip) -- once the voice
+                    // conversation itself is active, the button must stay
+                    // tappable throughout so the user can always stop it,
+                    // including mid-reply.
+                    onPressed: (!_voiceConversationActive && _asking) ? null : () => _toggleVoiceConversation(state),
+                    tooltip: _voiceConversationActive ? 'עצור שיחה קולית' : 'התחל שיחה קולית',
                     style: _listening
                         ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error)
-                        : null,
-                    icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                        : (_voiceConversationActive
+                            ? IconButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary)
+                            : null),
+                    icon: Icon(_voiceConversationActive ? Icons.mic : Icons.mic_none),
                   ),
                 ],
                 const SizedBox(width: 8),
@@ -292,7 +465,7 @@ class _CoachScreenState extends State<CoachScreen> {
                       : () {
                           final q = input.text.trim();
                           if (q.isEmpty) return;
-                          _ask(state, q);
+                          _askFromButton(state, q);
                           input.clear();
                         },
                   icon: const Icon(Icons.send),
@@ -303,6 +476,17 @@ class _CoachScreenState extends State<CoachScreen> {
         ),
       ],
     );
+  }
+
+  // Entry point for every direct, synchronous button tap that can lead to
+  // a spoken reply (a quick-question chip, the send button) -- primes
+  // speech synthesis, synchronously, in the same gesture as the tap
+  // itself, before handing off to the actual (later, async) ask. The mic
+  // button primes on its own inside _toggleVoiceConversation instead,
+  // since its tap doesn't call _ask directly.
+  void _askFromButton(AppState state, String question) {
+    _primeTts();
+    _ask(state, question);
   }
 
   Future<void> _ask(AppState state, String question) async {
@@ -335,6 +519,10 @@ class _CoachScreenState extends State<CoachScreen> {
       messages.add(CoachMessage(role: CoachRole.coach, text: reply));
       _asking = false;
     });
-    if (_speakRepliesAloud) _speakReply(reply);
+    // Awaited (not fire-and-forget) so the voice-conversation loop in
+    // _handleVoiceTurn only starts listening again once the coach has
+    // actually finished talking -- otherwise the mic could pick up the
+    // reply being read out of the speakers as if the user said it.
+    if (_speakRepliesAloud && _ttsAvailable) await _speakReply(reply);
   }
 }
